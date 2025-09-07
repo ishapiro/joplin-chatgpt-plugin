@@ -26,13 +26,22 @@ A comprehensive ChatGPT integration plugin for the Joplin note-taking app that p
    - Joplin desktop app
    - OpenAI API key
 
-2. **Build the Plugin**:
+2. **Setup Environment** (for development/testing):
+   ```bash
+   # Copy the example environment file
+   cp env.example .env.local
+   
+   # Edit .env.local and add your OpenAI API key
+   # Get your API key from: https://platform.openai.com/api-keys
+   ```
+
+3. **Build the Plugin**:
    ```bash
    npm install
    npm run build
    ```
 
-3. **Install in Joplin**:
+4. **Install in Joplin**:
    - Copy the `dist` folder to your Joplin plugins directory
    - Enable the plugin in Joplin settings
 
@@ -153,8 +162,36 @@ The plugin includes comprehensive tests:
 
 Run tests with:
 ```bash
+# Run all tests
 npm test
+
+# Run OpenAI integration tests (requires OPENAI_API_KEY in .env.local)
+npx jest test/openai-integration.test.ts
+
+# Run specific test suites
+npx jest test/simple.test.ts
+npx jest test/chatgpt-api.test.ts
 ```
+
+### Testing OpenAI Integration
+To test the actual OpenAI API integration:
+
+1. **Setup environment**:
+   ```bash
+   cp env.example .env.local
+   # Edit .env.local and add your real OpenAI API key
+   ```
+
+2. **Run integration tests**:
+   ```bash
+   npx jest test/openai-integration.test.ts
+   ```
+
+The integration tests will:
+- ✅ Verify API key configuration
+- ✅ Test real API calls (when API key is provided)
+- ✅ Validate error handling for rate limits and invalid keys
+- ✅ Test note processing features (improve, tag, summarize)
 
 ## Security
 
