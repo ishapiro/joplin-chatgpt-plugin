@@ -121,73 +121,44 @@
     }
   }
 
-  // Function to check for content to append
-  async function checkForContentToAppend() {
-    try {
-      // Check for note content to append
-      const tempData = await webviewApi.postMessage({ type: 'getTempData' });
-      if (tempData && tempData.noteContentToAppend) {
-        const currentContent = chatInput.value.trim();
-        const newContent = currentContent ? 
-          currentContent + '\n\n' + tempData.noteContentToAppend : 
-          tempData.noteContentToAppend;
-        chatInput.value = newContent;
-        chatInput.style.height = 'auto';
-        chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
-        chatInput.focus();
-        // Clear the temp data
-        await webviewApi.postMessage({ type: 'clearTempData', key: 'noteContentToAppend' });
-      }
-      
-      if (tempData && tempData.selectedTextToAppend) {
-        const currentContent = chatInput.value.trim();
-        const newContent = currentContent ? 
-          currentContent + '\n\n' + tempData.selectedTextToAppend : 
-          tempData.selectedTextToAppend;
-        chatInput.value = newContent;
-        chatInput.style.height = 'auto';
-        chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
-        chatInput.focus();
-        // Clear the temp data
-        await webviewApi.postMessage({ type: 'clearTempData', key: 'selectedTextToAppend' });
-      }
-    } catch (error) {
-      console.error('Error checking for content to append:', error);
-    }
-  }
-
-  // Check for content to append periodically
-  setInterval(checkForContentToAppend, 1000);
 
   // Handle messages from the plugin
   webviewApi.onMessage((message) => {
-    console.log('Webview received message:', message);
-    if (message && message.type) {
-      switch (message.type) {
+    console.info('Webview received message:', message);
+    
+    // Handle the case where message is wrapped in a 'message' property
+    const actualMessage = message.message || message;
+    
+    if (actualMessage && actualMessage.type) {
+      switch (actualMessage.type) {
         case 'setPrompt':
-          console.log('Setting prompt to:', message.content);
-          chatInput.value = message.content;
+          console.info('Setting prompt to:', actualMessage.content);
+          chatInput.value = actualMessage.content;
           chatInput.style.height = 'auto';
           chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
           chatInput.focus();
           break;
         case 'appendToPrompt':
-          console.log('Appending to prompt:', message.content);
+          console.info('Appending to prompt:', actualMessage.content);
           // Append content to existing prompt with a line break
           const currentContent = chatInput.value.trim();
           const newContent = currentContent ? 
-            currentContent + '\n\n' + message.content : 
-            message.content;
-          console.log('New prompt content:', newContent);
+            currentContent + '\n\n' + actualMessage.content : 
+            actualMessage.content;
+          console.info('New prompt content:', newContent);
           chatInput.value = newContent;
           chatInput.style.height = 'auto';
           chatInput.style.height = Math.min(chatInput.scrollHeight, 200) + 'px';
           chatInput.focus();
           break;
         case 'addMessage':
-          addMessage(message.sender, message.content);
+          addMessage(actualMessage.sender, actualMessage.content);
           break;
+        default:
+          console.info('Unknown message type:', actualMessage.type);
       }
+    } else {
+      console.info('Message received but no type:', actualMessage);
     }
   });
 })();

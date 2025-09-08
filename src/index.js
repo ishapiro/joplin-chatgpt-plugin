@@ -699,10 +699,7 @@ Make sure to set your OpenAI API key in Settings → Plugins → ChatGPT Toolkit
       // Show the panel
       await joplin.views.panels.show(panel);
       
-      // Store temp data for webview communication
-      let tempData = {};
-      
-      // Handle action function that can access tempData
+      // Handle action function
       async function handleAction(action) {
         try {
           switch (action) {
@@ -740,9 +737,18 @@ Make sure to set your OpenAI API key in Settings → Plugins → ChatGPT Toolkit
               
             case 'copyNoteToPrompt':
               const currentNote = await getCurrentNote();
-              // Store the content in temp data for the webview to access
-              tempData.noteContentToAppend = currentNote.body;
-              console.log('Stored note content for webview:', currentNote.body.substring(0, 100) + '...');
+              // Send the content directly to the webview
+              try {
+                console.log('About to send message to webview, panel:', panel);
+                const result = await joplin.views.panels.postMessage(panel, {
+                  type: 'appendToPrompt',
+                  content: currentNote.body
+                });
+                console.log('PostMessage result:', result);
+                console.log('Sent note content to webview:', currentNote.body.substring(0, 100) + '...');
+              } catch (error) {
+                console.error('Error sending message to webview:', error);
+              }
               return { success: true, message: 'Note content appended to prompt input!' };
               
             case 'copySelectedToPrompt':
@@ -750,9 +756,18 @@ Make sure to set your OpenAI API key in Settings → Plugins → ChatGPT Toolkit
               if (!selectedText || selectedText.trim() === '') {
                 return { success: false, error: 'No text selected. Please select some text first.' };
               }
-              // Store the content in temp data for the webview to access
-              tempData.selectedTextToAppend = selectedText;
-              console.log('Stored selected text for webview:', selectedText.substring(0, 100) + '...');
+              // Send the content directly to the webview
+              try {
+                console.log('About to send selected text to webview, panel:', panel);
+                const result = await joplin.views.panels.postMessage(panel, {
+                  type: 'appendToPrompt',
+                  content: selectedText
+                });
+                console.log('PostMessage result for selected text:', result);
+                console.log('Sent selected text to webview:', selectedText.substring(0, 100) + '...');
+              } catch (error) {
+                console.error('Error sending selected text to webview:', error);
+              }
               return { success: true, message: 'Selected text appended to prompt input!' };
               
             case 'checkGrammar':
@@ -787,15 +802,6 @@ Make sure to set your OpenAI API key in Settings → Plugins → ChatGPT Toolkit
               return { success: true, content: response };
             } else if (message.type === 'executeAction') {
               return await handleAction(message.action);
-            } else if (message.type === 'getTempData') {
-              return tempData;
-            } else if (message.type === 'clearTempData') {
-              if (message.key) {
-                delete tempData[message.key];
-              } else {
-                tempData = {};
-              }
-              return { success: true };
             }
           } catch (error) {
             console.error('Error handling webview message:', error);
