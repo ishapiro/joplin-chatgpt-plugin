@@ -11,6 +11,7 @@ A comprehensive ChatGPT integration plugin for the Joplin note-taking app that p
 - **Note as Prompt**: Use note content as context for ChatGPT interactions
 - **Content Replacement**: Replace entire notes or selected text with AI output
 - **Clipboard Integration**: Copy AI responses to clipboard for easy pasting
+- **Real-time Communication**: Efficient plugin-to-webview messaging system
 
 ### Additional Features
 - **Smart Tagging**: Auto-generate relevant tags based on note content
@@ -49,7 +50,7 @@ A comprehensive ChatGPT integration plugin for the Joplin note-taking app that p
 
 ### API Key Setup
 1. Get your OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Open Joplin settings → Plugins → ChatGPT Integration
+2. Open Joplin settings → Plugins → ChatGPT Toolkit
 3. Enter your API key in the secure field
 4. Configure other settings as needed
 
@@ -64,19 +65,22 @@ A comprehensive ChatGPT integration plugin for the Joplin note-taking app that p
 ### Chat Panel
 - Open the ChatGPT side panel from the toolbar
 - Type messages to interact with ChatGPT
-- Use "Use Note Context" to include current note in conversation
-- Access quick actions for note improvement
+- Use action buttons for quick operations:
+  - **📝 Append Reply to Note**: Add ChatGPT response to current note
+  - **🔄 Replace Note with Reply**: Replace entire note with ChatGPT response
+  - **📄 Create New Note**: Create new note with ChatGPT response
+  - **📋 Copy Note to Prompt**: Copy current note content to chat input
+  - **✂️ Copy Selected to Prompt**: Copy selected text to chat input
+  - **✅ Check Grammar**: Fix grammar and spelling of selected text
 
 ### Commands
 Access these commands through the command palette (Ctrl/Cmd + Shift + P):
 
 - **Improve Note with ChatGPT**: Enhance the current note's content
 - **Use Note as ChatGPT Prompt**: Send note content as context to ChatGPT
-- **Replace Note with ChatGPT Output**: Replace entire note with AI response
-- **Replace Selection with ChatGPT Output**: Replace selected text only
-- **Copy ChatGPT Output to Clipboard**: Generate content and copy to clipboard
-- **Generate Tags with ChatGPT**: Auto-generate relevant tags
-- **Summarize Note with ChatGPT**: Create a summary of the current note
+- **Check Grammar with ChatGPT**: Fix grammar and spelling of selected text
+- **Copy ChatGPT Response to Clipboard**: Generate content and copy to clipboard
+- **ChatGPT Chat Panel (side window)**: Open the interactive chat panel
 
 ### Workflow Examples
 
@@ -87,53 +91,172 @@ Access these commands through the command palette (Ctrl/Cmd + Shift + P):
 
 #### Content Generation
 1. Select a note or text
-2. Use "Use Note as ChatGPT Prompt" command
+2. Use "Copy Note to Prompt" or "Copy Selected to Prompt" in chat panel
 3. Enter your specific request
-4. Choose to copy, replace, or create new note
+4. Choose to append, replace, or create new note
 
 #### Research Assistant
 1. Open chat panel
-2. Use "Use Note Context" to include current note
+2. Use "Copy Note to Prompt" to include current note
 3. Ask questions about the note content
 4. Get AI-powered insights and suggestions
 
-## Additional Integration Recommendations
+## Technical Implementation
 
-### Smart Note Organization
-- **Auto-categorization**: Use AI to suggest note categories
-- **Related Note Discovery**: Find connections between notes
-- **Content Gap Analysis**: Identify missing information in note collections
+### Plugin-to-Webview Communication
 
-### Writing Enhancement
-- **Style Consistency**: Maintain consistent writing style across notes
-- **Grammar and Proofreading**: Advanced grammar checking and suggestions
-- **Tone Adjustment**: Modify note tone for different audiences
+This plugin demonstrates a robust communication system between the Joplin plugin and its webview panel. Here's how it works:
 
-### Research and Learning
-- **Fact Verification**: Cross-reference information with AI
-- **Concept Explanation**: Get detailed explanations of complex topics
-- **Learning Paths**: Generate study guides from note collections
+#### The Challenge
+Joplin webviews are sandboxed for security, making direct communication challenging. Initial attempts using polling were inefficient.
 
-### Productivity Features
-- **Meeting Notes**: Auto-generate action items and summaries
-- **Template Creation**: Generate note templates from examples
-- **Content Migration**: Help migrate content between different formats
+#### The Solution: Direct Message Passing
+
+**Plugin Side (TypeScript)**:
+```typescript
+// Send content directly to webview
+await joplin.views.panels.postMessage(panel, {
+  type: 'appendToPrompt',
+  content: noteContent
+});
+```
+
+**Webview Side (JavaScript)**:
+```javascript
+// Handle messages from plugin
+webviewApi.onMessage((message) => {
+  // Handle message wrapping (Joplin wraps messages in 'message' property)
+  const actualMessage = message.message || message;
+  
+  if (actualMessage && actualMessage.type === 'appendToPrompt') {
+    // Append content to prompt field
+    const currentContent = chatInput.value.trim();
+    const newContent = currentContent ? 
+      currentContent + '\n\n' + actualMessage.content : 
+      actualMessage.content;
+    chatInput.value = newContent;
+  }
+});
+```
+
+#### Key Implementation Details
+
+1. **Message Structure**: Joplin wraps messages in a `message` property, so we handle both `message.type` and `message.message.type`
+
+2. **Error Handling**: Comprehensive try-catch blocks with detailed logging
+
+3. **Type Safety**: Full TypeScript implementation with proper interfaces
+
+4. **Real-time Updates**: No polling - messages are sent immediately when actions occur
+
+### Developer Hints for Future Plugin Development
+
+#### 1. Webview Communication Best Practices
+
+**DO**:
+- Use `joplin.views.panels.postMessage()` for plugin-to-webview communication
+- Use `webviewApi.postMessage()` for webview-to-plugin communication
+- Handle message wrapping: `const actualMessage = message.message || message`
+- Use `console.info()` in webview for logging (appears in Joplin logs)
+- Implement proper error handling with try-catch blocks
+
+**DON'T**:
+- Use polling mechanisms (inefficient and unreliable)
+- Use global variables for communication
+- Rely on inline event handlers (CSP restrictions)
+- Use `console.log()` in webview (may not appear in logs)
+
+#### 2. TypeScript Configuration
+
+**tsconfig.json**:
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "none",
+    "lib": ["ES2020", "DOM"],
+    "strict": true,
+    "noImplicitAny": true,
+    "allowJs": true
+  }
+}
+```
+
+#### 3. Build Process
+
+**package.json scripts**:
+```json
+{
+  "scripts": {
+    "build": "npm run clean && npm run generate-manifest && npm run compile-ts && npm run copy-webview && npm run create-jpl",
+    "compile-ts": "tsc",
+    "copy-webview": "cp src/webview.js dist/"
+  }
+}
+```
+
+#### 4. Debugging Webview Issues
+
+**Accessing Webview Logs**:
+1. Go to **Configuration** → **Tools** → **Logs** in Joplin
+2. Search for your plugin ID or "chatgpt"
+3. Use `console.info()` instead of `console.log()` in webview code
+
+**Common Issues**:
+- **CSP Violations**: Move inline scripts to external files
+- **Message Not Received**: Check message structure and wrapping
+- **Settings Not Appearing**: Ensure settings section is registered
+- **API Key Field Issues**: Use correct `SettingItemType` values
+
+#### 5. Settings Configuration
+
+**Correct Setting Types** (Joplin API):
+```typescript
+import { SettingItemType } from 'api';
+
+await joplin.settings.registerSettings({
+  'apiKey': {
+    value: '',
+    type: SettingItemType.String,  // Not 2
+    label: 'API Key',
+    public: true,
+    section: 'myPlugin'
+  },
+  'maxTokens': {
+    value: 1000,
+    type: SettingItemType.Int,     // Not 1
+    label: 'Max Tokens',
+    public: true,
+    section: 'myPlugin'
+  },
+  'autoSave': {
+    value: true,
+    type: SettingItemType.Bool,    // Not 3
+    label: 'Auto Save',
+    public: true,
+    section: 'myPlugin'
+  }
+});
+```
 
 ## Development
 
 ### Project Structure
 ```
 src/
-├── index.ts              # Main plugin entry point
-├── settings.ts           # Settings management
-├── chatgpt-api.ts        # ChatGPT API integration
-├── commands.ts           # Command definitions
-└── chat-panel.ts         # Side panel implementation
+├── index.ts              # Main plugin entry point (TypeScript)
+├── webview.js            # Webview script (JavaScript)
+└── api.d.ts             # Type definitions
+
+dist/                     # Compiled output
+├── index.js             # Compiled TypeScript
+├── webview.js           # Copied webview script
+└── manifest.json        # Generated manifest
 
 test/
-├── setup.ts              # Test configuration
-├── mocks/                # Mock implementations
-└── *.test.ts            # Test files
+├── setup.ts             # Test configuration
+├── mocks/               # Mock implementations
+└── *.test.ts           # Test files
 ```
 
 ### Building
@@ -141,17 +264,14 @@ test/
 # Install dependencies
 npm install
 
-# Build the plugin
+# Build the plugin (TypeScript compilation + webview copy)
 npm run build
 
-# Watch for changes
-npm run watch
+# Development build (faster, no JPL creation)
+npm run dev
 
 # Run tests
 npm test
-
-# Run tests in watch mode
-npm run test:watch
 ```
 
 ### Testing
@@ -165,33 +285,10 @@ Run tests with:
 # Run all tests
 npm test
 
-# Run OpenAI integration tests (requires OPENAI_API_KEY in .env.local)
-npx jest test/openai-integration.test.ts
-
 # Run specific test suites
 npx jest test/simple.test.ts
-npx jest test/chatgpt-api.test.ts
+npx jest test/plugin.test.ts
 ```
-
-### Testing OpenAI Integration
-To test the actual OpenAI API integration:
-
-1. **Setup environment**:
-   ```bash
-   cp env.example .env.local
-   # Edit .env.local and add your real OpenAI API key
-   ```
-
-2. **Run integration tests**:
-   ```bash
-   npx jest test/openai-integration.test.ts
-   ```
-
-The integration tests will:
-- ✅ Verify API key configuration
-- ✅ Test real API calls (when API key is provided)
-- ✅ Validate error handling for rate limits and invalid keys
-- ✅ Test note processing features (improve, tag, summarize)
 
 ## Security
 
@@ -219,6 +316,11 @@ The integration tests will:
    - Try restarting Joplin
    - Check if panel is hidden in view menu
 
+4. **Copy to Prompt Not Working**:
+   - Check Joplin logs for communication errors
+   - Verify webview script is loaded correctly
+   - Ensure message structure is handled properly
+
 ### Debug Mode
 Enable debug logging in Joplin settings to see detailed plugin information.
 
@@ -243,10 +345,11 @@ MIT License - see LICENSE file for details.
 ## Changelog
 
 ### Version 1.0.0
-- Initial release
+- Initial release with TypeScript implementation
 - Chat panel with interactive ChatGPT interface
 - Note improvement and content generation
 - Secure API key storage
 - Comprehensive command set
-- Smart tagging and summarization
+- Real-time plugin-to-webview communication
 - Full test coverage
+- Developer documentation and best practices

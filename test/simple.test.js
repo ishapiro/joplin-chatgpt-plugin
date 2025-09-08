@@ -17,7 +17,7 @@ describe('Basic Plugin Tests', () => {
   });
 
   test('should have main plugin file', () => {
-    const pluginPath = path.join(__dirname, '../src/index.js');
+    const pluginPath = path.join(__dirname, '../src/index.ts');
     expect(fs.existsSync(pluginPath)).toBe(true);
     
     const pluginContent = fs.readFileSync(pluginPath, 'utf8');

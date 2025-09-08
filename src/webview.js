@@ -5,6 +5,29 @@
   const sendButton = document.getElementById('sendButton');
   const loading = document.getElementById('loading');
 
+  // Simple markdown parser for basic formatting
+  function parseMarkdown(text) {
+    return text
+      // Headers
+      .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+      .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+      .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+      // Bold
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.*?)__/g, '<strong>$1</strong>')
+      // Italic
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/_(.*?)_/g, '<em>$1</em>')
+      // Code blocks
+      .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+      // Inline code
+      .replace(/`(.*?)`/g, '<code>$1</code>')
+      // Links
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+      // Line breaks
+      .replace(/\n/g, '<br>');
+  }
+
   if (!chatMessages || !chatInput || !sendButton || !loading) {
     console.error('ChatGPT webview: required elements missing');
     return;
@@ -51,7 +74,14 @@
     messageDiv.className = 'message ' + sender;
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.textContent = content;
+    
+    // Render markdown for assistant messages, plain text for user messages
+    if (sender === 'assistant') {
+      contentDiv.innerHTML = parseMarkdown(content);
+    } else {
+      contentDiv.textContent = content;
+    }
+    
     messageDiv.appendChild(contentDiv);
     chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;

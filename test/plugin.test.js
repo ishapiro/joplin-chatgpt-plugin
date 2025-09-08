@@ -5,8 +5,8 @@ const path = require('path');
 // Mock the Joplin API
 const mockJoplin = require('./mocks/api');
 
-// Load the plugin code
-const pluginCode = fs.readFileSync(path.join(__dirname, '../src/index.js'), 'utf8');
+// Load the plugin code (compiled TypeScript)
+const pluginCode = fs.readFileSync(path.join(__dirname, '../dist/index.js'), 'utf8');
 
 describe('ChatGPT Toolkit Plugin Tests', () => {
   beforeEach(() => {
@@ -33,14 +33,10 @@ describe('ChatGPT Toolkit Plugin Tests', () => {
     const expectedCommands = [
       'improveNoteWithChatGPT',
       'summarizeNoteWithChatGPT',
-      'generateTagsWithChatGPT',
-      'expandNoteWithChatGPT',
-      'fixGrammarWithChatGPT',
-      'translateNoteWithChatGPT',
-      'improveSelectedTextWithChatGPT',
-      'replaceSelectedWithChatGPT',
-      'copyChatGPTResponse',
-      'useNoteAsChatGPTPrompt'
+      'checkGrammarWithChatGPT',
+      'copyChatGPTResponseToClipboard',
+      'useNoteAsChatGPTPrompt',
+      'openChatGPTChatPanel'
     ];
 
     expectedCommands.forEach(command => {
@@ -49,7 +45,7 @@ describe('ChatGPT Toolkit Plugin Tests', () => {
   });
 
   test('should create chat panel', () => {
-    expect(pluginCode).toContain('chatgpt-chat-panel');
+    expect(pluginCode).toContain('chatgptChatPanel');
     expect(pluginCode).toContain('ChatGPT Toolkit');
     expect(pluginCode).toContain('Setting up ChatGPT chat panel');
   });
@@ -59,7 +55,7 @@ describe('ChatGPT Toolkit Plugin Tests', () => {
     expect(pluginCode).toContain('sendMessage');
     expect(pluginCode).toContain('improveNote');
     expect(pluginCode).toContain('summarizeNote');
-    expect(pluginCode).toContain('generateTags');
+    expect(pluginCode).toContain('checkGrammar');
   });
 
   test('should handle OpenAI API calls', () => {
