@@ -18,6 +18,7 @@ const manifest = {
   app_min_version: joplinConfig.app_min_version,
   description: joplinConfig.description,
   author: joplinConfig.author,
+  license: joplinConfig.license,
   homepage_url: joplinConfig.homepage_url,
   repository_url: joplinConfig.repository_url,
   keywords: joplinConfig.keywords,
