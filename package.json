@@ -50,16 +50,20 @@
   },
   "scripts": {
     "build": "npm run clean && npm run generate-manifest && npm run compile-ts && npm run copy-webview && npm run create-jpl",
-    "dist": "npm run build && npm run prepare-publish",
+    "build-prod": "npm run clean && npm run generate-manifest && npm run compile-ts-prod && npm run copy-webview && npm run create-jpl-prod",
+    "dist": "npm run build-prod && npm run prepare-publish",
     "prepare-publish": "mkdir -p publish && cp joplin-plugin-chatgpt-toolkit.jpl publish/ && cp dist/manifest.json publish/joplin-plugin-chatgpt-toolkit.json",
     "generate-manifest": "node build.js",
     "compile-ts": "tsc",
+    "compile-ts-prod": "tsc --sourceMap false",
     "copy-webview": "cp src/webview.js dist/",
     "create-jpl": "cd dist && zip -r ../joplin-plugin-chatgpt-toolkit.jpl . && cd ..",
+    "create-jpl-prod": "cd dist && rm -f *.map && zip -r ../joplin-plugin-chatgpt-toolkit.jpl . && cd ..",
     "clean": "rm -rf dist/* publish/* && mkdir -p dist publish",
     "test": "jest",
     "test:watch": "jest --watch",
     "deploy": "npm run build && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/",
+    "deploy-prod": "npm run build-prod && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/",
     "dev": "npm run generate-manifest && npm run compile-ts && npm run copy-webview && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/"
   },
   "devDependencies": {

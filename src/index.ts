@@ -381,7 +381,8 @@ joplin.plugins.register({
       // Create a settings section so options appear in Joplin's UI
       await joplin.settings.registerSection('chatgptToolkit', {
         label: 'ChatGPT Toolkit',
-        iconName: 'fas fa-robot'
+        iconName: 'fas fa-robot',
+        description: 'AI-powered writing assistant for Joplin. Source code and documentation: https://github.com/ishapiro/joplin-chatgpt-plugin'
       });
 
       await joplin.settings.registerSettings({
@@ -410,10 +411,10 @@ joplin.plugins.register({
           section: 'chatgptToolkit',
         },
         'systemPrompt': {
-          value: 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance.',
+          value: 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance. Source: https://github.com/ishapiro/joplin-chatgpt-plugin',
           type: SettingItemType.String,
           label: 'System Prompt',
-          description: 'The system prompt that defines how ChatGPT should behave',
+          description: 'The system prompt that defines how ChatGPT should behave. You can customize this to change the assistant\'s personality and behavior.',
           public: true,
           section: 'chatgptToolkit',
         },
@@ -595,18 +596,36 @@ joplin.plugins.register({
           <div class="quick-actions">
             <button class="action-button" data-action="appendToNote">📝 Append Reply to Note</button>
             <button class="action-button" data-action="replaceNote">🔄 Replace Note with Reply</button>
-            <button class="action-button" data-action="createNewNote">📄 Create New Note</button>
+            <button class="action-button" data-action="createNewNote">📄 New Note from Reply</button>
             <button class="action-button" data-action="copyNoteToPrompt">📋 Copy Note to Prompt</button>
             <button class="action-button" data-action="copySelectedToPrompt">✂️ Copy Selected to Prompt</button>
-            <button class="action-button" data-action="checkGrammar">✅ Check Grammar</button>
+            <button class="action-button" data-action="checkGrammar">✅ Check Selected Grammar</button>
+            <button class="action-button" data-action="showAbout">ℹ️ About & Help</button>
           </div>
           
           <div class="chat-messages" id="chatMessages">
             <div class="message assistant">
               <div class="message-content">
-                Hello! I'm your ChatGPT assistant integrated with Joplin provided by Cogitations. 
-                You can ask me anything! Type your question or request in the input below, and I'll respond using ChatGPT.
-                Make sure to set your OpenAI API key in Settings → Plugins → ChatGPT Toolkit.
+                <strong>🤖 ChatGPT Toolkit v1.0</strong><br><br>
+                
+                <strong>✨ Features:</strong><br>
+                • 💬 Interactive chat with conversation history<br>
+                • 📝 Copy response to clipboard or Joplin note<br>
+                • ✅ Grammar and spelling correction with preview<br>
+                • ✂️ Copy selected text to chat prompt<br>
+                • 🔒 Secure API key handling<br>
+                • 🎨 Professional UI<br><br>
+                
+                <strong>🚀 Getting Started:</strong><br>
+                1. Set your OpenAI API key in <em>Settings → ChatGPT Toolkit</em><br>
+                2. Use the action buttons above or type your questions below<br>
+                3. Select text in notes to use context-aware features<br><br>
+                
+                <strong>📚 Resources:</strong><br>
+                • <a href="https://github.com/ishapiro/joplin-chatgpt-plugin" target="_blank">GitHub Repository</a> - Documentation, issues, updates<br>
+                • <a href="https://platform.openai.com/api-keys" target="_blank">Get OpenAI API Key</a><br>
+                
+                <br><br><strong>Ready to enhance your note-taking with AI? Ask me anything! 🎯</strong>
               </div>
             </div>
           </div>
@@ -694,10 +713,10 @@ joplin.plugins.register({
           .quick-actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            padding: 16px;
+            gap: 8px;
+            padding: 12px;
             background: #f5f5f5;
-            border-bottom: 1px solid #e8e8e8;
+            border-bottom: 1px solid #e8e8e8;ug
           }
 
           .action-button {
@@ -1110,6 +1129,45 @@ joplin.plugins.register({
               });
               
               return { success: true, message: 'Grammar check completed! Please review the changes.' };
+              
+            case 'showAbout':
+              // Send comprehensive about information to the chat
+              await joplin.views.panels.postMessage(panel, {
+                type: 'addMessage',
+                sender: 'assistant',
+                content: `<strong>🤖 ChatGPT Toolkit v1.0</strong><br><br>
+                
+<strong>📋 Full Feature List:</strong><br>
+• <strong>💬 Interactive Chat:</strong> Full conversation with ChatGPT with history<br>
+• <strong>📝 Smart Actions:</strong> Append, replace, or create new notes from responses<br>
+• <strong>✅ Grammar Checking:</strong> AI-powered grammar and spelling correction<br>
+• <strong>✂️ Text Integration:</strong> Copy selected text or entire notes to prompts<br>
+• <strong>🔒 Security:</strong> Secure API key storage and XSS protection<br>
+• <strong>🎨 Modern UI:</strong> Clean interface<br>
+• <strong>📚 Conversation History:</strong> Maintains context across exchanges<br><br>
+
+<strong>🛠️ Technical Details:</strong><br>
+• <strong>Models Supported:</strong> GPT-5, GPT-4.1, GPT-4o, o1, o3, o4-mini series<br>
+• <strong>API:</strong> Latest OpenAI API with reasoning support<br>
+• <strong>Security:</strong> Input validation, content sanitization, secure token handling<br>
+• <strong>Performance:</strong> Token-aware history trimming, efficient API calls<br><br>
+
+<strong>🔗 Resources & Support:</strong><br>
+• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin" target="_blank"><strong>📁 GitHub Repository</strong></a> - Source code, documentation, issues<br>
+• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin/blob/main/README.md" target="_blank"><strong>📖 Documentation</strong></a> - Complete setup and usage guide<br>
+• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin/issues" target="_blank"><strong>🐛 Report Issues</strong></a> - Bug reports and feature requests<br>
+• <a href="https://platform.openai.com/api-keys" target="_blank"><strong>🔑 Get API Key</strong></a> - OpenAI API key setup<br>
+• <a href="https://joplinapp.org/plugins/" target="_blank"><strong>💬 Joplin Plugin Forum</strong></a> - Community support<br><br>
+
+<strong>👨‍💻 Developer:</strong> Irv Shapiro / Cogitations, LLC<br>
+<strong>📄 License:</strong> MIT License<br>
+<strong>🏷️ Version:</strong> 1.0.0<br><br>
+<strong>🏢 Learn about Cogitations, LLC:</strong> <a href="https://cogitations.com" target="_blank">https://cogitations.com</a><br><br>
+
+<em>Thank you for using ChatGPT Toolkit! ⭐ Star the repo if you find it helpful!</em>`
+              });
+              
+              return { success: true, message: 'About information displayed' };
               
             default:
               return { success: false, error: 'Unknown action: ' + action };
