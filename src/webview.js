@@ -69,9 +69,65 @@
   // Click to send
   sendButton.addEventListener('click', () => sendMessage());
 
+  // Clear history button
+  const clearHistoryButton = document.getElementById('clearHistoryButton');
+  if (clearHistoryButton) {
+    clearHistoryButton.addEventListener('click', async () => {
+      try {
+        // Clear the conversation history on the backend
+        await webviewApi.postMessage({
+          type: 'clearHistory'
+        });
+        
+        // Clear the chat window visually
+        clearChatWindow();
+        
+        console.log('History cleared successfully');
+      } catch (error) {
+        console.error('Error clearing history:', error);
+        addError('Error clearing history: ' + error.message);
+      }
+    });
+  }
+
   function addMessage(sender, content) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ' + sender;
+    
+    // Create message header with copy button for assistant messages
+    if (sender === 'assistant') {
+      const messageHeader = document.createElement('div');
+      messageHeader.className = 'message-header';
+      
+      const copyButton = document.createElement('button');
+      copyButton.className = 'copy-button';
+      copyButton.innerHTML = '📋 Copy';
+      copyButton.title = 'Copy response to clipboard';
+      
+      copyButton.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(content);
+          copyButton.innerHTML = '✅ Copied!';
+          copyButton.style.background = '#4CAF50';
+          setTimeout(() => {
+            copyButton.innerHTML = '📋 Copy';
+            copyButton.style.background = '';
+          }, 2000);
+        } catch (error) {
+          console.error('Failed to copy:', error);
+          copyButton.innerHTML = '❌ Failed';
+          copyButton.style.background = '#f44336';
+          setTimeout(() => {
+            copyButton.innerHTML = '📋 Copy';
+            copyButton.style.background = '';
+          }, 2000);
+        }
+      });
+      
+      messageHeader.appendChild(copyButton);
+      messageDiv.appendChild(messageHeader);
+    }
+    
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     
@@ -98,6 +154,14 @@
   function showLoading(show) {
     loading.style.display = show ? 'block' : 'none';
     if (show) chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  function clearChatWindow() {
+    // Clear all messages from the chat window
+    chatMessages.innerHTML = '';
+    
+    // Add a welcome message to indicate the chat is cleared
+    addMessage('system', 'Chat history cleared. Start a new conversation!');
   }
 
   async function sendMessage() {

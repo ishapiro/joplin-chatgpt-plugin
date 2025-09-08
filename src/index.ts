@@ -3,7 +3,7 @@
 // Type definitions for Joplin API
 declare const joplin: any;
 
-// Setting types enum
+// Setting types enumReviewrt
 enum SettingItemType {
   Int = 1,
   String = 2,
@@ -17,6 +17,8 @@ interface ChatGPTAPISettings {
   maxTokens: number;
   systemPrompt: string;
   autoSave: boolean;
+  reasoningEffort: string;
+  verbosity: string;
 }
 
 interface WebviewMessage {
@@ -51,14 +53,17 @@ interface ChatGPTResponse {
 // ChatGPT API class with proper typing
 class ChatGPTAPI {
   private settings: ChatGPTAPISettings;
+  private conversationHistory: Array<{role: 'user' | 'assistant', content: string}> = [];
 
   constructor() {
     this.settings = {
       openaiApiKey: '',
-      openaiModel: 'gpt-4o',
+      openaiModel: 'gpt-4.1',
       maxTokens: 1000,
       systemPrompt: 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance.',
-      autoSave: true
+      autoSave: true,
+      reasoningEffort: 'low',
+      verbosity: 'low'
     };
   }
 
@@ -68,6 +73,70 @@ class ChatGPTAPI {
     this.settings.maxTokens = await joplin.settings.value('maxTokens');
     this.settings.systemPrompt = await joplin.settings.value('systemPrompt');
     this.settings.autoSave = await joplin.settings.value('autoSave');
+    this.settings.reasoningEffort = await joplin.settings.value('reasoningEffort');
+    this.settings.verbosity = await joplin.settings.value('verbosity');
+  }
+
+  clearConversationHistory(): void {
+    this.conversationHistory = [];
+    console.info(`[ChatGPT API] Conversation history cleared`);
+  }
+
+  // Estimate token count for a message (rough approximation: 1 token ≈ 4 characters)
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+  }
+
+  // Get conversation history limited by token count
+  private getLimitedHistory(maxTokens: number): Array<{role: 'user' | 'assistant', content: string}> {
+    if (this.conversationHistory.length === 0) {
+      return [];
+    }
+
+    let totalTokens = 0;
+    const limitedHistory: Array<{role: 'user' | 'assistant', content: string}> = [];
+    
+    // Start from the most recent messages and work backwards
+    for (let i = this.conversationHistory.length - 1; i >= 0; i--) {
+      const message = this.conversationHistory[i];
+      const messageTokens = this.estimateTokens(message.content);
+      
+      if (totalTokens + messageTokens <= maxTokens) {
+        limitedHistory.unshift(message); // Add to beginning to maintain order
+        totalTokens += messageTokens;
+      } else {
+        break; // Stop if adding this message would exceed the limit
+      }
+    }
+    
+    console.info(`[ChatGPT API] History limited to ${limitedHistory.length} messages (estimated ${totalTokens} tokens, max ${maxTokens})`);
+    return limitedHistory;
+  }
+
+  // Trim conversation history to stay within token limits
+  private trimHistoryToTokenLimit(maxTokens: number): void {
+    if (this.conversationHistory.length === 0) {
+      return;
+    }
+
+    let totalTokens = 0;
+    const trimmedHistory: Array<{role: 'user' | 'assistant', content: string}> = [];
+    
+    // Start from the most recent messages and work backwards
+    for (let i = this.conversationHistory.length - 1; i >= 0; i--) {
+      const message = this.conversationHistory[i];
+      const messageTokens = this.estimateTokens(message.content);
+      
+      if (totalTokens + messageTokens <= maxTokens) {
+        trimmedHistory.unshift(message); // Add to beginning to maintain order
+        totalTokens += messageTokens;
+      } else {
+        break; // Stop if adding this message would exceed the limit
+      }
+    }
+    
+    this.conversationHistory = trimmedHistory;
+    console.info(`[ChatGPT API] History trimmed to ${trimmedHistory.length} messages (estimated ${totalTokens} tokens, max ${maxTokens})`);
   }
 
   async sendMessage(userMessage: string): Promise<string> {
@@ -89,21 +158,46 @@ class ChatGPTAPI {
     }, 60000); // 60 second timeout
 
     try {
-      const requestBody = {
+      // Determine the correct endpoint and parameter name based on model type
+      const endpoint = (this.settings.openaiModel.startsWith('o3') || this.settings.openaiModel === 'o4-mini') 
+        ? 'https://api.openai.com/v1/responses'
+        : 'https://api.openai.com/v1/chat/completions';
+      
+      const isResponsesEndpoint = endpoint.includes('/responses');
+      
+      // Build messages array with conversation history
+      const messages = [
+        { role: 'system', content: this.settings.systemPrompt + '\n\nPlease format your responses using Markdown syntax for better readability.' }
+      ];
+      
+      // Add conversation history, but limit to 1/2 of max tokens
+      const maxHistoryTokensForRequest = Math.floor(this.settings.maxTokens / 2);
+      const recentHistory = this.getLimitedHistory(maxHistoryTokensForRequest);
+      messages.push(...recentHistory);
+      
+      // Add current user message
+      messages.push({ role: 'user', content: userMessage });
+      
+      const requestBody: any = {
         model: this.settings.openaiModel,
-        messages: [
-          { role: 'system', content: this.settings.systemPrompt + '\n\nPlease format your responses using Markdown syntax for better readability.' },
-          { role: 'user', content: userMessage }
-        ],
-        ...(this.settings.openaiModel.includes('gpt-5') 
+        [isResponsesEndpoint ? 'input' : 'messages']: messages,
+        ...(this.settings.openaiModel.includes('gpt-5') || this.settings.openaiModel.includes('gpt-4.1') || this.settings.openaiModel.startsWith('o')
           ? { max_completion_tokens: this.settings.maxTokens }
           : { max_tokens: this.settings.maxTokens }
         ),
+        stream: false
       };
 
-      console.info(`[ChatGPT API] Request body:`, JSON.stringify(requestBody, null, 2));
+      // Add new parameters for newer models
+      if (this.settings.openaiModel.includes('gpt-5') || this.settings.openaiModel.startsWith('o')) {
+        requestBody.reasoning_effort = this.settings.reasoningEffort; // low, medium, high
+        requestBody.verbosity = this.settings.verbosity; // low, medium, high
+      }
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      console.info(`[ChatGPT API] Request body:`, JSON.stringify(requestBody, null, 2));
+      console.info(`[ChatGPT API] Using endpoint: ${endpoint}`);
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,6 +232,7 @@ class ChatGPTAPI {
         throw new Error(errorMessage);
       }
 
+      // Handle non-streaming response
       const responseText = await response.text();
       console.info(`[ChatGPT API] Response body length: ${responseText.length} characters`);
       
@@ -168,6 +263,17 @@ class ChatGPTAPI {
       }
 
       console.info(`[ChatGPT API] Success! Response length: ${content.length} characters`);
+      
+      // Store the conversation exchange in history
+      this.conversationHistory.push({ role: 'user', content: userMessage });
+      this.conversationHistory.push({ role: 'assistant', content: content });
+      
+      // Trim history to stay within token limits (keep it under 1/2 of max tokens)
+      const maxHistoryTokensForStorage = Math.floor(this.settings.maxTokens / 2);
+      this.trimHistoryToTokenLimit(maxHistoryTokensForStorage);
+      
+      console.info(`[ChatGPT API] Conversation history now has ${this.conversationHistory.length} messages`);
+      
       return content;
 
     } catch (error: any) {
@@ -244,10 +350,10 @@ joplin.plugins.register({
           section: 'chatgptToolkit',
         },
         'openaiModel': {
-          value: 'gpt-4o',
+          value: 'gpt-4.1',
           type: SettingItemType.String,
           label: 'OpenAI Model',
-          description: 'The OpenAI model to use. Supported models: gpt-5, gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo',
+          description: 'The OpenAI model to use. Supported models: GPT-5 family (gpt-5, gpt-5-mini, gpt-5-nano), GPT-4.1 family (gpt-4.1, gpt-4.1-mini, gpt-4.1-nano), GPT-4o family (gpt-4o, gpt-4o-mini), Reasoning models (o1, o3, o4-mini)',
           public: true,
           section: 'chatgptToolkit',
         },
@@ -274,7 +380,23 @@ joplin.plugins.register({
           description: 'Automatically save note changes after AI operations',
           public: true,
           section: 'chatgptToolkit',
-        }
+        },
+        'reasoningEffort': {
+          value: 'low',
+          type: SettingItemType.String,
+          label: 'Reasoning Effort',
+          description: 'Controls depth of reasoning for GPT-5 and o-series models (low, medium, high)',
+          public: true,
+          section: 'chatgptToolkit',
+        },
+        'verbosity': {
+          value: 'low',
+          type: SettingItemType.String,
+          label: 'Verbosity',
+          description: 'Controls response detail level for GPT-5 and o-series models (low, medium, high)',
+          public: true,
+          section: 'chatgptToolkit',
+        },
       });
 
       // Create global ChatGPT API instance
@@ -495,6 +617,7 @@ joplin.plugins.register({
             ></textarea>
           </div>
           <div class="send-button-container">
+            <button class="clear-history-button" id="clearHistoryButton">Clear History</button>
             <button class="send-button" id="sendButton">Send</button>
           </div>
         </div>
@@ -668,6 +791,39 @@ joplin.plugins.register({
             color: #2c2c2c;
           }
 
+          .message-header {
+            display: flex;
+            justify-content: flex-end;
+            padding: 8px 12px 4px 12px;
+            border-bottom: 1px solid #e0e0e0;
+          }
+
+          .copy-button {
+            padding: 4px 8px;
+            background: #ffffff;
+            color: #666666;
+            border: 1px solid #cccccc;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+          }
+
+          .copy-button:hover {
+            background: #f8f8f8;
+            border-color: #999999;
+            color: #333333;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+          }
+
+          .copy-button:active {
+            background: #eeeeee;
+            border-color: #888888;
+            transform: translateY(1px);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+          }
+
           .loading {
             display: none;
             padding: 16px 20px;
@@ -717,7 +873,37 @@ joplin.plugins.register({
             padding: 0 20px 16px 20px;
             background: #f5f5f5;
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+          }
+
+          .clear-history-button {
+            padding: 8px 16px;
+            background: #ffffff;
+            color: #666666;
+            border: 1px solid #cccccc;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+          }
+
+          .clear-history-button:hover {
+            background: #f8f8f8;
+            border-color: #999999;
+            color: #333333;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+            transform: translateY(-1px);
+          }
+
+          .clear-history-button:active {
+            background: #eeeeee;
+            border-color: #888888;
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
           }
 
           .send-button {
@@ -885,6 +1071,9 @@ joplin.plugins.register({
             const response = await chatGPTAPI.sendMessage(message.message || '');
             lastChatGPTResponse = response; // Store for later use
             return { success: true, content: response };
+          } else if (message.type === 'clearHistory') {
+            chatGPTAPI.clearConversationHistory();
+            return { success: true, message: 'Conversation history cleared' };
           } else if (message.type === 'executeAction') {
             return await handleAction(message.action || '');
           }
