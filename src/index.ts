@@ -44,6 +44,7 @@ interface WebviewMessage {
   sender?: string;
   action?: string;
   message?: string;
+  correctedText?: string;
 }
 
 interface Note {
@@ -97,6 +98,32 @@ class ChatGPTAPI {
   clearConversationHistory(): void {
     this.conversationHistory = [];
     console.info(`[ChatGPT API] Conversation history cleared`);
+  }
+
+  // Validate API key format
+  private validateApiKey(apiKey: string): boolean {
+    if (!apiKey || typeof apiKey !== 'string') {
+      return false;
+    }
+    
+    // Check for basic OpenAI API key format (sk- or sk-proj- prefix)
+    if (!apiKey.startsWith('sk-')) {
+      console.warn('API key validation: Key should start with "sk-"');
+      return true; // Allow anyway, just warn
+    }
+    
+    // Current API keys are typically 150+ characters
+    if (apiKey.length < 20 || apiKey.length > 200) {
+      return false;
+    }
+    
+    // Allow letters, numbers, hyphens, underscores, and periods
+    // Modern OpenAI API keys follow format: sk-proj-[long alphanumeric string]
+    if (!/^sk-[A-Za-z0-9\-_\.]+$/.test(apiKey)) {
+      return false;
+    }
+    
+    return true;
   }
 
   // Estimate token count for a message (rough approximation: 1 token ≈ 4 characters)
@@ -602,6 +629,21 @@ joplin.plugins.register({
           </div>
         </div>
 
+        <!-- Grammar Check Modal -->
+        <div id="grammar-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
+          <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border-radius: 8px; max-width: 80%; max-height: 80%; overflow-y: auto;">
+            <h3 style="margin-top: 0; color: #2c2c2c;">Grammar Check Results</h3>
+            <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745;">
+              <strong>Corrected Text:</strong>
+              <div id="corrected-text" style="margin-top: 10px; white-space: pre-wrap; color: #2c2c2c;"></div>
+            </div>
+            <div style="margin-top: 20px; text-align: right;">
+              <button id="reject-grammar" style="margin-right: 10px; padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Reject</button>
+              <button id="accept-grammar" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">Accept & Apply</button>
+            </div>
+          </div>
+        </div>
+
         <style>
           .chat-container {
             display: flex;
@@ -1050,13 +1092,24 @@ joplin.plugins.register({
                 return { success: false, error: 'No text selected. Please select some text first.' };
               }
               
+              // Show working message
+              await joplin.views.panels.postMessage(panel, {
+                type: 'addMessage',
+                sender: 'system',
+                content: 'Checking grammar...'
+              });
+              
               // Use ChatGPT to check grammar
               const grammarResponse = await chatGPTAPI.checkGrammar(textToCheck);
               
-              // Replace the selected text with the corrected version
-              await replaceSelectedText(grammarResponse);
+              // Show modal with corrected text for user approval
+              await joplin.views.panels.postMessage(panel, {
+                type: 'showGrammarModal',
+                originalText: textToCheck,
+                correctedText: grammarResponse
+              });
               
-              return { success: true, message: 'Grammar check completed and text updated!' };
+              return { success: true, message: 'Grammar check completed! Please review the changes.' };
               
             default:
               return { success: false, error: 'Unknown action: ' + action };
@@ -1087,6 +1140,22 @@ joplin.plugins.register({
             // Actually close the panel after user confirms
             await joplin.views.panels.hide(actualPanelId);
             return { success: true, message: 'Panel closed' };
+          } else if (message.type === 'acceptGrammarChanges') {
+            // Replace the selected text with the corrected version
+            if (message.correctedText) {
+              await replaceSelectedText(message.correctedText);
+              
+              // Send confirmation message to the panel
+              await joplin.views.panels.postMessage(panel, {
+                type: 'addMessage',
+                sender: 'system',
+                content: 'Grammar corrections applied successfully!'
+              });
+              
+              return { success: true, message: 'Grammar changes applied' };
+            } else {
+              return { success: false, error: 'No corrected text provided' };
+            }
           } else if (message.type === 'executeAction') {
             return await handleAction(message.action || '');
           }

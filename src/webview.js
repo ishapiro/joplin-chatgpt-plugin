@@ -268,6 +268,9 @@
         case 'showCloseMessage':
           showCloseMessage();
           break;
+        case 'showGrammarModal':
+          showGrammarModal(actualMessage.originalText, actualMessage.correctedText);
+          break;
         default:
           console.info('Unknown message type:', actualMessage.type);
       }
@@ -347,5 +350,46 @@
       cancelBtn.style.transform = 'translateY(0)';
     });
   }
+
+  // Grammar modal functions
+  function showGrammarModal(originalText, correctedText) {
+    const modal = document.getElementById('grammar-modal');
+    const correctedTextElement = document.getElementById('corrected-text');
+    
+    // Store the texts for later use (we still need original for replacement)
+    modal.dataset.originalText = originalText;
+    modal.dataset.correctedText = correctedText;
+    
+    // Display only the corrected text (user can see original in Joplin)
+    correctedTextElement.textContent = correctedText;
+    modal.style.display = 'block';
+  }
+
+  function hideGrammarModal() {
+    const modal = document.getElementById('grammar-modal');
+    modal.style.display = 'none';
+  }
+
+  // Grammar modal event listeners
+  document.getElementById('accept-grammar').addEventListener('click', function() {
+    const modal = document.getElementById('grammar-modal');
+    const correctedText = modal.dataset.correctedText;
+    
+    // Send the corrected text back to the plugin
+    webviewApi.postMessage({
+      type: 'acceptGrammarChanges',
+      correctedText: correctedText
+    });
+    
+    hideGrammarModal();
+  });
+
+  document.getElementById('reject-grammar').addEventListener('click', function() {
+    hideGrammarModal();
+  });
+
+  // Make functions available globally for message handling
+  window.showGrammarModal = showGrammarModal;
+  window.hideGrammarModal = hideGrammarModal;
 
 })();
