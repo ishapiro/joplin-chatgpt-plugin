@@ -90,6 +90,23 @@
     });
   }
 
+  // Close panel button
+  const closePanelButton = document.getElementById('closePanelButton');
+  if (closePanelButton) {
+    closePanelButton.addEventListener('click', async () => {
+      try {
+        // Send close message to the plugin
+        await webviewApi.postMessage({
+          type: 'closePanel'
+        });
+        
+        console.log('Close panel requested');
+      } catch (error) {
+        console.error('Error closing panel:', error);
+      }
+    });
+  }
+
   function addMessage(sender, content) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message ' + sender;
@@ -248,6 +265,9 @@
         case 'addMessage':
           addMessage(actualMessage.sender, actualMessage.content);
           break;
+        case 'showCloseMessage':
+          showCloseMessage();
+          break;
         default:
           console.info('Unknown message type:', actualMessage.type);
       }
@@ -255,4 +275,77 @@
       console.info('Message received but no type:', actualMessage);
     }
   });
+
+  // Function to show a nicely formatted close message
+  function showCloseMessage() {
+    // Clear the chat messages and show a formatted close message
+    chatMessages.innerHTML = '';
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message system';
+    messageDiv.style.cssText = `
+      text-align: center;
+      padding: 15px;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius: 8px;
+      margin: 10px;
+      border: 1px solid #28a745;
+    `;
+    
+    messageDiv.innerHTML = `
+      <p style="color: #495057; font-size: 14px; margin-bottom: 15px;">To reopen this panel:</p>
+      <div style="color: #495057; font-size: 13px; line-height: 1.4; margin-bottom: 15px;">
+        <strong>1.</strong> Press Ctrl+Shift+P (or Cmd+Shift+P on Mac)<br>
+        <strong>2.</strong> Type "Open ChatGPT Panel"<br>
+        <strong>3.</strong> Press Enter
+      </div>
+      <div style="display: flex; gap: 10px; justify-content: center;">
+        <button id="confirmCloseButton" style="padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; background: #28a745; color: white;">Close Panel</button>
+        <button id="cancelCloseButton" style="padding: 8px 16px; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; background: #6c757d; color: white;">Keep Open</button>
+      </div>
+    `;
+    
+    chatMessages.appendChild(messageDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Add event listeners for the buttons
+    document.getElementById('confirmCloseButton').addEventListener('click', async () => {
+      try {
+        await webviewApi.postMessage({
+          type: 'confirmClose'
+        });
+      } catch (error) {
+        console.error('Error confirming close:', error);
+      }
+    });
+    
+    document.getElementById('cancelCloseButton').addEventListener('click', () => {
+      // Just clear the close message and return to normal chat
+      chatMessages.innerHTML = '';
+      addMessage('system', 'Panel kept open. Continue your conversation!');
+    });
+    
+    // Add hover effects
+    const confirmBtn = document.getElementById('confirmCloseButton');
+    const cancelBtn = document.getElementById('cancelCloseButton');
+    
+    confirmBtn.addEventListener('mouseenter', () => {
+      confirmBtn.style.background = '#218838';
+      confirmBtn.style.transform = 'translateY(-1px)';
+    });
+    confirmBtn.addEventListener('mouseleave', () => {
+      confirmBtn.style.background = '#28a745';
+      confirmBtn.style.transform = 'translateY(0)';
+    });
+    
+    cancelBtn.addEventListener('mouseenter', () => {
+      cancelBtn.style.background = '#5a6268';
+      cancelBtn.style.transform = 'translateY(-1px)';
+    });
+    cancelBtn.addEventListener('mouseleave', () => {
+      cancelBtn.style.background = '#6c757d';
+      cancelBtn.style.transform = 'translateY(0)';
+    });
+  }
+
 })();

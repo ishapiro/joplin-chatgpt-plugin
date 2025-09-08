@@ -17,7 +17,7 @@
     "id": "com.cogitations.chatgpttoolkit",
     "name": "ChatGPT Toolkit",
     "version": "0.1",
-    "app_min_version": "2.10",
+    "app_min_version": "2.12",
     "description": "Integrate ChatGPT AI assistant with your Joplin notes",
     "author": "Irv Shapiro",
     "homepage_url": "https://github.com/ishapiro/joplin-chatgpt-plugin",

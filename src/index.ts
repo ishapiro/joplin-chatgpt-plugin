@@ -10,6 +10,23 @@ enum SettingItemType {
   Bool = 3
 }
 
+// Toolbar button location enum
+enum ToolbarButtonLocation {
+  NoteToolbar = 1,
+  EditorToolbar = 2
+}
+
+// Note: MenuItemLocation should be imported from 'api/types' but we'll define it here for now
+// In a proper setup, you would import it like: import { MenuItemLocation } from 'api/types';
+enum MenuItemLocation {
+  Tools = 1,
+  File = 2,
+  Edit = 3,
+  View = 4,
+  Note = 5,
+  Help = 6
+}
+
 // Type definitions for our plugin
 interface ChatGPTAPISettings {
   openaiApiKey: string;
@@ -472,37 +489,7 @@ joplin.plugins.register({
       // Helper function to get last ChatGPT response from chat
       let lastChatGPTResponse: string = '';
 
-      // 1. Improve Note with ChatGPT
-      await joplin.commands.register({
-        name: 'improveNoteWithChatGPT',
-        label: 'Improve Note with ChatGPT',
-        execute: async () => {
-          try {
-            const note = await getCurrentNote();
-            const improvedContent = await chatGPTAPI.improveNote(note.body);
-            await updateNoteContent(note.id, improvedContent);
-            await joplin.views.dialogs.showMessageBox('Note improved successfully with ChatGPT!');
-          } catch (error: any) {
-            await joplin.views.dialogs.showMessageBox(`Error: ${error.message}`);
-          }
-        },
-      });
 
-      // 2. Summarize Note with ChatGPT
-      await joplin.commands.register({
-        name: 'summarizeNoteWithChatGPT',
-        label: 'Summarize Note with ChatGPT',
-        execute: async () => {
-          try {
-            const note = await getCurrentNote();
-            const summary = await chatGPTAPI.summarizeNote(note.body);
-            await updateNoteContent(note.id, `# Summary\n\n${summary}\n\n---\n\n# Original Note\n\n${note.body}`);
-            await joplin.views.dialogs.showMessageBox('Note summarized successfully with ChatGPT!');
-          } catch (error: any) {
-            await joplin.views.dialogs.showMessageBox(`Error: ${error.message}`);
-          }
-        },
-      });
 
       // 3. Check Grammar with ChatGPT
       await joplin.commands.register({
@@ -559,30 +546,23 @@ joplin.plugins.register({
         },
       });
 
-      // 6. ChatGPT Chat Panel (side window)
-      await joplin.commands.register({
-        name: 'openChatGPTChatPanel',
-        label: 'ChatGPT Chat Panel (side window)',
-        execute: async () => {
-          try {
-            await joplin.views.panels.show('chatgptChatPanel');
-          } catch (error: any) {
-            console.error('Error opening chat panel:', error);
-          }
-        },
-      });
-
       // ===== CHAT PANEL SETUP =====
       console.info('Setting up ChatGPT chat panel...');
 
-      // Create the chat panel
-      const panel = await joplin.views.panels.create('chatgptChatPanel');
+      // Create the chat panel first
+      const panelId = 'chatgpt.toolbox.panel';
+      const panel = await joplin.views.panels.create(panelId);
+      console.info('Panel created with ID:', panel, 'panelId:', panelId);
+      
+      // Use the actual panel ID that Joplin created
+      const actualPanelId = panel;
 
       // Set the panel HTML
       await joplin.views.panels.setHtml(panel, `
         <div class="chat-container">
           <div class="chat-header">
             <h3>ChatGPT Toolkit</h3>
+            <button class="close-button" id="closePanelButton" title="Close Panel">✕</button>
           </div>
           
           <div class="quick-actions">
@@ -636,6 +616,9 @@ joplin.plugins.register({
             background: #f8f8f8;
             padding: 16px 20px;
             border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
           }
 
           .chat-header h3 {
@@ -644,6 +627,26 @@ joplin.plugins.register({
             font-size: 18px;
             font-weight: 600;
             letter-spacing: -0.01em;
+          }
+
+          .close-button {
+            background: transparent;
+            color: #666666;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+          }
+
+          .close-button:hover {
+            background: rgba(0, 0, 0, 0.1);
+            color: #333333;
+          }
+
+          .close-button:active {
+            background: rgba(0, 0, 0, 0.2);
           }
 
           .quick-actions {
@@ -1074,6 +1077,16 @@ joplin.plugins.register({
           } else if (message.type === 'clearHistory') {
             chatGPTAPI.clearConversationHistory();
             return { success: true, message: 'Conversation history cleared' };
+          } else if (message.type === 'closePanel') {
+            // Send a nicely formatted close message to the panel before closing
+            await joplin.views.panels.postMessage(actualPanelId, {
+              type: 'showCloseMessage'
+            });
+            return { success: true, message: 'Close message sent' };
+          } else if (message.type === 'confirmClose') {
+            // Actually close the panel after user confirms
+            await joplin.views.panels.hide(actualPanelId);
+            return { success: true, message: 'Panel closed' };
           } else if (message.type === 'executeAction') {
             return await handleAction(message.action || '');
           }
@@ -1085,6 +1098,57 @@ joplin.plugins.register({
       });
       
       console.info('ChatGPT chat panel created successfully!');
+
+      // ===== ADDITIONAL COMMANDS SETUP =====
+      console.info('Setting up additional ChatGPT commands...');
+
+      // 6. Open ChatGPT Panel
+      await joplin.commands.register({
+        name: 'openChatGPTPanel',
+        label: 'Open ChatGPT Panel',
+        execute: async () => {
+          try {
+            await joplin.views.panels.show(actualPanelId);
+            console.info('ChatGPT panel opened via command');
+          } catch (error: any) {
+            console.error('Error opening chat panel:', error);
+          }
+        },
+      });
+
+      // 7. Toggle ChatGPT Toolbox
+      await joplin.commands.register({
+        name: 'toggleChatGPTToolbox',
+        label: 'Toggle ChatGPT Toolbox',
+        execute: async () => {
+          try {
+            console.info('Toggle command executed, checking panel visibility...');
+            const isVisible = await joplin.views.panels.visible(actualPanelId);
+            console.info('Panel visibility check result:', isVisible, 'for panel:', actualPanelId);
+            
+            if (isVisible) {
+              console.info('Panel is visible, hiding it...');
+              await joplin.views.panels.hide(actualPanelId);
+              console.info('ChatGPT Toolbox hidden successfully');
+            } else {
+              console.info('Panel is not visible, showing it...');
+              await joplin.views.panels.show(actualPanelId);
+              console.info('ChatGPT Toolbox shown successfully');
+            }
+          } catch (error: any) {
+            console.error('Error toggling ChatGPT toolbox:', error);
+            await joplin.views.dialogs.showMessageBox('Error toggling ChatGPT toolbox: ' + error.message);
+          }
+        },
+      });
+
+      // ===== UI ACCESS SETUP =====
+      // Note: Toolbar buttons and menu items have compatibility issues with this Joplin version
+      // Users can access the ChatGPT panel via the Command Palette, which works reliably
+      console.info('ChatGPT Toolkit Access Methods:');
+      console.info('1. Command Palette: Ctrl+Shift+P (or Cmd+Shift+P) -> "Open ChatGPT Panel"');
+      console.info('2. Command Palette: Ctrl+Shift+P (or Cmd+Shift+P) -> "Toggle ChatGPT Toolbox"');
+      console.info('UI elements (toolbar buttons/menu items) disabled due to Joplin version compatibility');
       
       console.info('ChatGPT Toolkit Plugin initialized successfully!');
       console.info('Available commands:');

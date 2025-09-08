@@ -2,6 +2,107 @@
 
 A comprehensive ChatGPT integration plugin for the Joplin note-taking app that provides AI-powered assistance for note improvement, content generation, and interactive chat functionality.
 
+## Quick Start Guide
+
+### 1. Installation & Setup
+
+1. **Install the Plugin**:
+   - Download the plugin file (`joplin-plugin-chatgpt.jpl`)
+   - In Joplin, go to **Tools** → **Options** → **Plugins**
+   - Click **Install Plugin** and select the downloaded file
+   - Enable the plugin when prompted
+
+2. **Configure Your OpenAI API Key**:
+   - Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+   - In Joplin, go to **Tools** → **Options** → **Plugins** → **ChatGPT Toolkit**
+   - Enter your API key in the **OpenAI API Key** field
+   - Click **Apply** to save
+
+3. **Configure Plugin Settings**:
+   - **OpenAI Model**: Choose your preferred model (GPT-3.5 Turbo, GPT-4, GPT-4o, etc.)
+   - **Max Tokens**: Set response length limit (100-4000 tokens)
+   - **System Prompt**: Customize AI behavior (optional)
+   - **Enable Conversation History**: Keep chat context between messages (recommended)
+
+### 2. Opening the ChatGPT Panel
+
+**Command Palette (Primary Method)**
+1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
+2. Type "Open ChatGPT Panel" or "Toggle ChatGPT Toolbox"
+3. Press Enter
+
+*Note: Toolbar buttons and menu items are not supported in all Joplin versions due to API compatibility issues. The Command Palette method works reliably across all versions.*
+
+### 3. Using the ChatGPT Panel
+
+The panel appears on the right side of Joplin with these features:
+
+**Chat Interface**:
+- Type your message in the input field
+- Press `Enter` or click **Send** to get AI response
+- Use `Ctrl+Enter` (or `Cmd+Enter` on Mac) to send quickly
+
+**Action Buttons**:
+- **📝 Append Reply to Note**: Add ChatGPT response to current note
+- **🔄 Replace Note with Reply**: Replace entire note with ChatGPT response  
+- **📄 Create New Note**: Create new note with ChatGPT response
+- **📋 Copy Note to Prompt**: Copy current note content to chat input
+- **✂️ Copy Selected to Prompt**: Copy selected text to chat input
+- **✅ Check Grammar**: Fix grammar and spelling of selected text
+- **🗑️ Clear History**: Clear conversation history
+
+**Panel Controls**:
+- **✕ Close Button**: Close the panel (shows helpful reopening instructions)
+- **Clear History Button**: Reset conversation context
+
+### 4. Settings Explained
+
+| Setting | Description | Recommended Value |
+|---------|-------------|-------------------|
+| **OpenAI API Key** | Your OpenAI API key for authentication | Required - get from OpenAI |
+| **OpenAI Model** | AI model to use for responses | `gpt-4o` (best balance) |
+| **Max Tokens** | Maximum response length | `1000` (good for most tasks) |
+| **System Prompt** | Instructions for AI behavior | Default works well |
+| **Enable Conversation History** | Keep chat context between messages | `true` (recommended) |
+
+### 5. Common Workflows
+
+**Improve a Note**:
+1. Open the note you want to improve
+2. Open ChatGPT panel (`Ctrl+Shift+P` → "Open ChatGPT Panel")
+3. Click **📋 Copy Note to Prompt**
+4. Type: "Please improve this note for clarity and structure"
+5. Click **Send**
+6. Click **🔄 Replace Note with Reply** to apply changes
+
+**Research Assistant**:
+1. Open ChatGPT panel
+2. Click **📋 Copy Note to Prompt** to include your research notes
+3. Ask questions like: "What are the key insights from this research?"
+4. Use **📝 Append Reply to Note** to add insights to your note
+
+**Grammar Check**:
+1. Select text in your note
+2. Open ChatGPT panel
+3. Click **✂️ Copy Selected to Prompt**
+4. Type: "Please check grammar and spelling"
+5. Click **Send**
+6. Click **🔄 Replace Note with Reply** to apply corrections
+
+**Create New Content**:
+1. Open ChatGPT panel
+2. Type your request (e.g., "Write a summary of machine learning basics")
+3. Click **Send**
+4. Click **📄 Create New Note** to create a new note with the response
+
+### 6. Tips & Best Practices
+
+- **Use conversation history**: Keep it enabled for better context
+- **Be specific**: The more specific your prompts, the better the responses
+- **Use action buttons**: They make it easy to integrate AI responses into your notes
+- **Keyboard shortcuts**: Use `Ctrl+Shift+P` to quickly open the panel
+- **Close and reopen**: Use the ✕ button to close, then `Ctrl+Shift+P` to reopen
+
 ## Features
 
 ### Core Features
@@ -341,6 +442,267 @@ MIT License - see LICENSE file for details.
 - **Issues**: Report bugs and request features on GitHub
 - **Documentation**: Check the wiki for detailed guides
 - **Community**: Join the Joplin community forum for discussions
+
+## Implementation Decisions
+
+This section documents the key architectural and implementation decisions made during the development of this plugin, providing insights for future development and maintenance.
+
+### 1. TypeScript Conversion
+
+**Decision**: Convert from JavaScript to TypeScript
+**Rationale**: 
+- Better type safety and error catching during development
+- Improved IDE support with autocomplete and refactoring
+- Easier maintenance and debugging
+- Better documentation through type definitions
+
+**Implementation**:
+- Added comprehensive type definitions for Joplin API
+- Created interfaces for plugin settings and API responses
+- Implemented strict TypeScript configuration
+- Maintained backward compatibility with existing JavaScript webview code
+
+### 2. Plugin-to-Webview Communication Architecture
+
+**Decision**: Direct message passing instead of polling
+**Rationale**:
+- Polling is inefficient and unreliable
+- Direct messaging provides real-time communication
+- Better user experience with immediate feedback
+- Reduced resource usage
+
+**Implementation**:
+```typescript
+// Plugin to Webview
+await joplin.views.panels.postMessage(panel, {
+  type: 'appendToPrompt',
+  content: noteContent
+});
+
+// Webview to Plugin
+await webviewApi.postMessage({
+  type: 'sendChatMessage',
+  message: userInput
+});
+```
+
+**Key Challenges Solved**:
+- Message wrapping: Joplin wraps messages in `message` property
+- Error handling: Comprehensive try-catch blocks
+- Type safety: Proper TypeScript interfaces
+
+### 3. OpenAI API Integration Strategy
+
+**Decision**: Dynamic endpoint and parameter selection
+**Rationale**:
+- Support for both legacy and new OpenAI API endpoints
+- Handle different parameter requirements for different models
+- Future-proof against API changes
+- Maintain compatibility with various GPT models
+
+**Implementation**:
+```typescript
+// Dynamic endpoint selection
+const isResponsesEndpoint = this.settings.openaiModel.includes('o3') || 
+                           this.settings.openaiModel.includes('o4-mini');
+const endpoint = isResponsesEndpoint ? '/v1/responses' : '/v1/chat/completions';
+
+// Dynamic parameter selection
+const requestBody: any = {
+  model: this.settings.openaiModel,
+  [isResponsesEndpoint ? 'input' : 'messages']: messages,
+  ...(this.settings.openaiModel.includes('gpt-5') ? 
+    { max_completion_tokens: this.settings.maxTokens } : 
+    { max_tokens: this.settings.maxTokens }
+  )
+};
+```
+
+### 4. Conversation History Management
+
+**Decision**: Token-aware history trimming with recent message prioritization
+**Rationale**:
+- Stay within API token limits
+- Maintain conversation context
+- Prioritize recent messages for better relevance
+- Transparent to user experience
+
+**Implementation**:
+```typescript
+private trimHistoryToTokenLimit(maxTokens: number): void {
+  let totalTokens = 0;
+  const trimmedHistory: Array<{role: 'user' | 'assistant', content: string}> = [];
+  
+  // Iterate backwards to keep most recent messages
+  for (let i = this.conversationHistory.length - 1; i >= 0; i--) {
+    const message = this.conversationHistory[i];
+    const messageTokens = this.estimateTokens(message.content);
+    
+    if (totalTokens + messageTokens <= maxTokens) {
+      trimmedHistory.unshift(message); // Add to beginning
+      totalTokens += messageTokens;
+    } else {
+      break;
+    }
+  }
+  
+  this.conversationHistory = trimmedHistory;
+}
+```
+
+### 5. User Interface Design Decisions
+
+**Decision**: Integrated panel with action buttons instead of separate commands
+**Rationale**:
+- Better user experience with visual feedback
+- Reduced command palette clutter
+- Contextual actions within the chat interface
+- Easier discovery of features
+
+**Implementation**:
+- Side panel with chat interface
+- Action buttons for common operations
+- Close button with helpful reopening instructions
+- Clear history functionality
+
+### 6. Error Handling and Logging Strategy
+
+**Decision**: Comprehensive error handling with detailed logging
+**Rationale**:
+- Better debugging capabilities
+- User-friendly error messages
+- API error handling for different scenarios
+- Timeout handling for hanging requests
+
+**Implementation**:
+```typescript
+// API call with timeout and error handling
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+try {
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${this.settings.openaiApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(requestBody),
+    signal: controller.signal
+  });
+  
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error(`[ChatGPT API] Error response: ${response.status} ${response.statusText}`);
+    console.error(`[ChatGPT API] Error response body:`, errorBody);
+    throw new Error(`OpenAI API error: ${response.status} - ${errorBody}`);
+  }
+  
+  const data = await response.json();
+  return data.choices[0].message.content;
+} catch (error: any) {
+  if (error.name === 'AbortError') {
+    throw new Error('Request timed out. Please try again.');
+  }
+  throw error;
+} finally {
+  clearTimeout(timeoutId);
+}
+```
+
+### 7. Settings Management
+
+**Decision**: Secure settings storage with validation
+**Rationale**:
+- Protect sensitive API keys
+- Validate user input
+- Provide sensible defaults
+- Support for different model configurations
+
+**Implementation**:
+- Encrypted storage through Joplin's settings API
+- Input validation for API keys and token limits
+- Dynamic model lists based on API capabilities
+- Fallback values for all settings
+
+### 8. Build and Deployment Strategy
+
+**Decision**: Source-based development with automated deployment
+**Rationale**:
+- Edit source files, not compiled output
+- Automated build process
+- Easy development workflow
+- Consistent deployment
+
+**Implementation**:
+```json
+{
+  "scripts": {
+    "dev": "npm run generate-manifest && npm run compile-ts && npm run copy-webview && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/",
+    "build": "npm run clean && npm run generate-manifest && npm run compile-ts && npm run copy-webview && npm run create-jpl"
+  }
+}
+```
+
+### 9. Testing Strategy
+
+**Decision**: Comprehensive test coverage with mocking
+**Rationale**:
+- Ensure reliability
+- Test API interactions
+- Mock external dependencies
+- Validate plugin functionality
+
+**Implementation**:
+- Unit tests for individual functions
+- Integration tests for API calls
+- Mock implementations for Joplin API
+- Test coverage for error scenarios
+
+### 10. Security Considerations
+
+**Decision**: Secure API key handling and data privacy
+**Rationale**:
+- Protect user credentials
+- Maintain data privacy
+- Follow security best practices
+- Transparent data handling
+
+**Implementation**:
+- API keys stored in Joplin's encrypted settings
+- No data logging or external transmission
+- HTTPS-only API communications
+- User data remains local
+
+### 11. Performance Optimizations
+
+**Decision**: Efficient resource usage and responsive UI
+**Rationale**:
+- Minimize plugin impact on Joplin performance
+- Provide responsive user experience
+- Optimize API calls
+- Manage memory usage
+
+**Implementation**:
+- Token-aware conversation history
+- Efficient message passing
+- Minimal DOM manipulation
+- Optimized API request handling
+
+### 12. Future-Proofing Decisions
+
+**Decision**: Flexible architecture for API changes
+**Rationale**:
+- Adapt to OpenAI API evolution
+- Support new models as they become available
+- Maintain backward compatibility
+- Easy feature additions
+
+**Implementation**:
+- Dynamic endpoint selection
+- Configurable model lists
+- Modular API handling
+- Extensible message types
 
 ## Changelog
 
