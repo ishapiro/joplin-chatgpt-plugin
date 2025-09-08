@@ -1,16 +1,19 @@
 {
-  "name": "joplin-plugin-chatgpt",
+  "name": "joplin-plugin-chatgpt-toolkit",
   "version": "1.0.0",
   "description": "ChatGPT integration plugin for Joplin note-taking app",
   "main": "dist/index.js",
-  "author": "Your Name",
+  "author": "Irv Shapiro",
   "license": "MIT",
   "keywords": [
+    "joplin-plugin",
     "joplin",
     "plugin",
     "chatgpt",
     "ai",
-    "notes"
+    "notes",
+    "assistant",
+    "writing"
   ],
   "joplin": {
     "manifest_version": 1,
@@ -47,11 +50,13 @@
   },
   "scripts": {
     "build": "npm run clean && npm run generate-manifest && npm run compile-ts && npm run copy-webview && npm run create-jpl",
+    "dist": "npm run build && npm run prepare-publish",
+    "prepare-publish": "mkdir -p publish && cp joplin-plugin-chatgpt-toolkit.jpl publish/ && cp dist/manifest.json publish/joplin-plugin-chatgpt-toolkit.json",
     "generate-manifest": "node build.js",
     "compile-ts": "tsc",
     "copy-webview": "cp src/webview.js dist/",
-    "create-jpl": "cd dist && zip -r ../joplin-plugin-chatgpt.jpl . && cd ..",
-    "clean": "rm -rf dist/* && mkdir -p dist",
+    "create-jpl": "cd dist && zip -r ../joplin-plugin-chatgpt-toolkit.jpl . && cd ..",
+    "clean": "rm -rf dist/* publish/* && mkdir -p dist publish",
     "test": "jest",
     "test:watch": "jest --watch",
     "deploy": "npm run build && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/",
