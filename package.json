@@ -13,13 +13,15 @@
     "notes"
   ],
   "joplin": {
-    "manifest_version": 2,
-    "name": "ChatGPT Integration",
+    "manifest_version": 1,
+    "id": "com.cogitations.chatgpttoolkit",
+    "name": "ChatGPT Toolkit",
+    "version": "0.1",
+    "app_min_version": "2.10",
     "description": "Integrate ChatGPT AI assistant with your Joplin notes",
-    "version": "1.0.0",
-    "author": "Your Name",
-    "homepage_url": "https://github.com/yourusername/joplin-chatgpt-plugin",
-    "repository_url": "https://github.com/yourusername/joplin-chatgpt-plugin",
+    "author": "Irv Shapiro",
+    "homepage_url": "https://github.com/ishapiro/joplin-chatgpt-plugin",
+    "repository_url": "https://github.com/ishapiro/joplin-chatgpt-plugin",
     "keywords": [
       "chatgpt",
       "ai",
@@ -32,6 +34,7 @@
       "ai"
     ],
     "screenshots": [],
+    "main": "index.js",
     "permissions": [
       "settings",
       "commands",
@@ -42,12 +45,15 @@
     ]
   },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc --watch",
+    "build": "npm run clean && npm run generate-manifest && npm run copy-src && npm run create-jpl",
+    "generate-manifest": "node build.js",
+    "copy-src": "cp src/index.js dist/ && cp src/webview.js dist/",
+    "create-jpl": "cd dist && zip -r ../joplin-plugin-chatgpt.jpl . && cd ..",
+    "clean": "rm -rf dist/* && mkdir -p dist",
     "test": "jest",
     "test:watch": "jest --watch",
-    "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix"
+    "deploy": "npm run build && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/",
+    "dev": "npm run generate-manifest && npm run copy-src && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/"
   },
   "devDependencies": {
     "@joplin/lib": "^3.4.1",
@@ -61,6 +67,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "axios": "^1.4.0"
+    "axios": "^1.4.0",
+    "dotenv": "^16.4.5"
   }
 }
