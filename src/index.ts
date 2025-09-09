@@ -3,7 +3,7 @@
 // Type definitions for Joplin API
 declare const joplin: any;
 
-// Setting types enumReviewrt
+// Setting types enum
 enum SettingItemType {
   Int = 1,
   String = 2,
