@@ -17,7 +17,7 @@
   ],
   "joplin": {
     "manifest_version": 1,
-    "id": "com.cogitations.chatgpttoolkit",
+    "id": "com.cogitations.chatgpt-toolkit",
     "name": "ChatGPT Toolkit",
     "version": "1.0",
     "app_min_version": "2.12",
@@ -62,9 +62,9 @@
     "clean": "rm -rf dist/* publish/* && mkdir -p dist publish",
     "test": "jest",
     "test:watch": "jest --watch",
-    "deploy": "npm run build && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/",
-    "deploy-prod": "npm run build-prod && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/",
-    "dev": "npm run generate-manifest && npm run compile-ts && npm run copy-webview && cp -r dist/ ~/Library/Application\\ Support/Joplin/plugins/joplin-plugin-chatgpt/"
+    "deploy": "npm run build && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
+    "deploy-prod": "npm run build-prod && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
+    "dev": "npm run generate-manifest && npm run compile-ts && npm run copy-webview && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/"
   },
   "devDependencies": {
     "@joplin/lib": "^3.4.1",
