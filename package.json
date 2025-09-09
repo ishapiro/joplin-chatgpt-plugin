@@ -51,7 +51,8 @@
   "scripts": {
     "build": "npm run clean && npm run generate-manifest && npm run compile-ts && npm run copy-webview && npm run create-jpl",
     "build-prod": "npm run clean && npm run generate-manifest && npm run compile-ts-prod && npm run copy-webview && npm run create-jpl-prod",
-    "dist": "npm run build-prod && npm run prepare-publish",
+    "dist": "scripts/package-jpl.sh",
+    "dist-old": "npm run build-prod && npm run prepare-publish",
     "prepare-publish": "mkdir -p publish && cp joplin-plugin-chatgpt-toolkit.jpl publish/ && cp dist/manifest.json publish/joplin-plugin-chatgpt-toolkit.json",
     "generate-manifest": "node build.js",
     "compile-ts": "tsc",

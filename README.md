@@ -147,6 +147,93 @@ The panel appears on the right side of Joplin with these features:
    - Copy the `dist` folder to your Joplin plugins directory
    - Enable the plugin in Joplin settings
 
+## Building the .jpl Install File
+
+### Quick Start
+To create a distributable `.jpl` plugin file:
+
+```bash
+npm run dist
+```
+
+This creates `dist/chatgpt-toolkit-1.0.jpl` ready for installation in Joplin.
+
+### Understanding .jpl Format
+
+**Critical**: Joplin plugin files (`.jpl`) must be **TAR archives**, not ZIP files. Using ZIP will cause an "invalid base256 encoding" error during installation.
+
+#### Correct Format Check
+```bash
+# Verify your .jpl is properly formatted
+file dist/chatgpt-toolkit-1.0.jpl
+# Should output: "POSIX tar archive"
+
+# List contents without errors
+tar -tf dist/chatgpt-toolkit-1.0.jpl
+```
+
+### Packaging Script Features
+
+Our `scripts/package-jpl.sh` script provides:
+
+- ✅ **Proper TAR format**: Creates POSIX tar archives using `--format=ustar`
+- ✅ **Clean builds**: Automatically runs `npm run build` 
+- ✅ **macOS compatibility**: Excludes `.DS_Store`, `__MACOSX`, and source maps
+- ✅ **Correct structure**: Ensures `manifest.json` is at archive root
+- ✅ **Validation**: Verifies archive contents and shows file size
+- ✅ **Smart naming**: Uses plugin name + version from manifest
+
+#### Manual Build (Advanced)
+If you need to create the `.jpl` manually:
+
+```bash
+# After running your build process to populate ./dist
+mkdir -p publish
+
+# Create TAR archive (NOT zip!)
+tar --format=ustar -cf publish/chatgpt-toolkit-1.0.jpl -C dist .
+
+# Verify it worked
+file publish/chatgpt-toolkit-1.0.jpl  # Should say "tar archive"
+tar -tf publish/chatgpt-toolkit-1.0.jpl | head -5
+```
+
+#### Common Mistakes to Avoid
+
+❌ **Don't use ZIP:**
+```bash
+# This will cause "invalid base256 encoding" errors
+zip -r plugin.jpl dist/*
+```
+
+❌ **Don't use Finder's "Compress"** - it creates ZIP files
+
+❌ **Don't use gzipped tar:**
+```bash
+# This won't work either
+tar -czf plugin.jpl dist/*
+```
+
+✅ **Use plain TAR with ustar format:**
+```bash
+# This is correct
+tar --format=ustar -cf plugin.jpl -C dist .
+```
+
+#### Troubleshooting
+
+**"invalid base256 encoding" error:**
+- Your `.jpl` is a ZIP file instead of TAR
+- Solution: Use `npm run dist` or manual TAR command above
+
+**Plugin won't load:**
+- Check that `manifest.json` is at the archive root
+- Verify all required files are included: `index.js`, `webview.js`, `manifest.json`
+
+**macOS-specific issues:**
+- Install GNU tar if BSD tar causes problems: `brew install gnu-tar`
+- Use `gtar` instead of `tar` in commands
+
 ## Configuration
 
 ### API Key Setup
