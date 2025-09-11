@@ -7,7 +7,7 @@ describe('Basic Plugin Tests', () => {
     const packageJsonPath = path.join(__dirname, '../package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     
-    expect(packageJson.name).toBe('joplin-plugin-chatgpt');
+    expect(packageJson.name).toBe('joplin-plugin-chatgpt-toolkit');
     expect(packageJson.version).toBe('1.0.0');
     expect(packageJson.joplin).toBeDefined();
     expect(packageJson.joplin.name).toBe('ChatGPT Toolkit');
@@ -34,8 +34,8 @@ describe('Basic Plugin Tests', () => {
     const packageJsonPath = path.join(__dirname, '../package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     
-    expect(packageJson.joplin.id).toBe('com.cogitations.chatgpttoolkit');
-    expect(packageJson.joplin.app_min_version).toBe('2.10');
+    expect(packageJson.joplin.id).toBe('com.cogitations.chatgpt-toolkit');
+    expect(packageJson.joplin.app_min_version).toBe('2.12');
     expect(packageJson.joplin.main).toBe('index.js');
   });
 });

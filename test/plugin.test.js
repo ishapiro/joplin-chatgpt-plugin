@@ -24,19 +24,19 @@ describe('ChatGPT Toolkit Plugin Tests', () => {
     expect(pluginCode).toContain('openaiApiKey');
     expect(pluginCode).toContain('openaiModel');
     expect(pluginCode).toContain('maxTokens');
-    expect(pluginCode).toContain('temperature');
     expect(pluginCode).toContain('systemPrompt');
     expect(pluginCode).toContain('autoSave');
+    expect(pluginCode).toContain('reasoningEffort');
+    expect(pluginCode).toContain('verbosity');
   });
 
   test('should register all ChatGPT commands', () => {
     const expectedCommands = [
-      'improveNoteWithChatGPT',
-      'summarizeNoteWithChatGPT',
       'checkGrammarWithChatGPT',
       'copyChatGPTResponseToClipboard',
       'useNoteAsChatGPTPrompt',
-      'openChatGPTChatPanel'
+      'openChatGPTPanel',
+      'toggleChatGPTToolbox'
     ];
 
     expectedCommands.forEach(command => {
@@ -45,7 +45,7 @@ describe('ChatGPT Toolkit Plugin Tests', () => {
   });
 
   test('should create chat panel', () => {
-    expect(pluginCode).toContain('chatgptChatPanel');
+    expect(pluginCode).toContain('chatgpt.toolbox.panel');
     expect(pluginCode).toContain('ChatGPT Toolkit');
     expect(pluginCode).toContain('Setting up ChatGPT chat panel');
   });

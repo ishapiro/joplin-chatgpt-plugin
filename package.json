@@ -63,6 +63,12 @@
     "clean": "rm -rf dist/* publish/* && mkdir -p dist publish",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:unit": "jest test/chatgpt-api.test.js",
+    "test:integration": "jest test/integration.test.js",
+    "test:errors": "jest test/error-handling.test.js",
+    "test:performance": "jest test/performance.test.js",
+    "test:all": "./scripts/run-tests.sh",
     "deploy": "npm run build && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
     "deploy-prod": "npm run build-prod && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
     "dev": "npm run generate-manifest && npm run compile-ts && npm run copy-webview && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/"
