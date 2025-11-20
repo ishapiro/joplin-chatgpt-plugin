@@ -21,9 +21,12 @@ if [ -f package.json ]; then
     echo "==> npm install (node_modules not found)"
     npm install
   fi
-  if npm run | grep -qE "^  build"; then
+  # Check if build script exists in package.json
+  if node -e "const pkg = require('./package.json'); process.exit(pkg.scripts && pkg.scripts.build ? 0 : 1)" 2>/dev/null; then
     echo "==> npm run build"
     npm run build
+  else
+    echo "==> Build script not found in package.json, skipping build"
   fi
 fi
 

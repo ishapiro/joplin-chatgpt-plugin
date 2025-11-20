@@ -1,4 +1,4 @@
-# Joplin ChatGPT Plugin - Technical Documentation
+npm # Joplin ChatGPT Plugin - Technical Documentation
 
 This document provides a comprehensive technical overview of the Joplin ChatGPT Plugin, explaining the major architectural decisions, implementation patterns, and serving as a tutorial for Joplin plugin development.
 
@@ -195,6 +195,58 @@ webviewApi.onMessage((message) => {
 
 ## OpenAI API Integration
 
+### Model Discovery and Selection
+
+The plugin includes a sophisticated model discovery system that fetches available models from the OpenAI API on first load:
+
+```typescript
+// Function to fetch available models from OpenAI API
+async function fetchAvailableModels(apiKey: string): Promise<string[]> {
+  try {
+    const response = await fetch('https://api.openai.com/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn('Failed to fetch models from OpenAI API');
+      return [];
+    }
+
+    const data = await response.json();
+    if (data.data && Array.isArray(data.data)) {
+      // Extract model IDs and filter for chat/completion models
+      const models = data.data
+        .map((model: any) => model.id)
+        .filter((id: string) => {
+          return id.includes('gpt') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
+        })
+        .sort();
+      
+      return models;
+    }
+    return [];
+  } catch (error: any) {
+    console.warn('Error fetching models from OpenAI API:', error.message);
+    return [];
+  }
+}
+```
+
+**Model Storage and Caching:**
+- Models are fetched only once on first plugin load
+- Stored in Joplin's plugin data storage for persistence
+- Falls back to hardcoded default list if API fetch fails
+- Dropdown dynamically populated with available models
+
+**Default Model:**
+- Default model is `gpt-5.1` (latest GPT model)
+- Can be changed via dropdown in the panel UI
+- Changes are saved to settings and take effect immediately
+
 ### Dynamic Endpoint Selection
 
 The plugin supports multiple OpenAI API endpoints and models:
@@ -226,11 +278,41 @@ const requestBody: any = {
   stream: false
 };
 
-// Add new parameters for newer models
+// Add new parameters for newer models (including gpt-5.1)
 if (this.settings.openaiModel.includes('gpt-5') || 
     this.settings.openaiModel.startsWith('o')) {
   requestBody.reasoning_effort = this.settings.reasoningEffort;
   requestBody.verbosity = this.settings.verbosity;
+}
+```
+
+**Model Selector UI Integration:**
+
+The model selector dropdown is dynamically generated based on fetched models:
+
+```typescript
+// Generate model options HTML
+const selectedModel = await joplin.settings.value('openaiModel') || 'gpt-5.1';
+const modelOptions = modelsToUse.map(model => {
+  const isSelected = model === selectedModel ? ' selected' : '';
+  const displayName = model === 'gpt-5.1' ? 'GPT-5.1 (Latest)' : 
+                     model.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+  return `<option value="${model}"${isSelected}>${displayName}</option>`;
+}).join('\n              ');
+```
+
+**Model Change Handling:**
+
+```typescript
+// Handle model updates from webview
+else if (message.type === 'updateModel') {
+  const modelToSet = (message as any).model || message.content;
+  if (modelToSet) {
+    await joplin.settings.setValue('openaiModel', modelToSet);
+    // Reload settings in the API instance
+    await chatGPTAPI.loadSettings();
+    return { success: true, message: `Model updated to ${modelToSet}` };
+  }
 }
 ```
 
@@ -313,7 +395,7 @@ await joplin.settings.registerSettings({
     section: 'chatgptToolkit',
   },
   'openaiModel': {
-    value: 'gpt-4.1',
+    value: 'gpt-5.1',
     type: SettingItemType.String,
     label: 'OpenAI Model',
     description: 'The OpenAI model to use',
@@ -340,6 +422,81 @@ await joplin.settings.registerSection('chatgptToolkit', {
   description: 'AI-powered writing assistant for Joplin'
 });
 ```
+
+### Menu Item Registration
+
+The plugin registers a menu item in the Tools menu for easy access:
+
+```typescript
+// Try to add menu item to Tools menu
+try {
+  await joplin.views.menuItems.register('chatgptToolkitMenuItem', MenuItemLocation.Tools, {
+    label: 'ChatGPT Toolkit',
+    iconName: 'fas fa-robot',
+    accelerator: 'CmdOrCtrl+Shift+C',
+    execute: async () => {
+      try {
+        await joplin.views.panels.show(actualPanelId);
+        console.info('ChatGPT Toolkit opened from Tools menu');
+      } catch (error: any) {
+        console.error('Error opening ChatGPT Toolkit from menu:', error);
+      }
+    }
+  });
+  console.info('ChatGPT Toolkit menu item added to Tools menu');
+} catch (error: any) {
+  console.warn('Could not add menu item (may not be supported in this Joplin version):', error.message);
+}
+```
+
+**Note**: Menu items may not be supported in all Joplin versions. The plugin gracefully handles this by catching errors and falling back to Command Palette access.
+
+### Action Buttons and Note Operations
+
+The plugin provides multiple action buttons for integrating AI responses into notes:
+
+**Available Actions:**
+- **Append**: Adds AI response to the end of the current note
+- **Replace**: Replaces the entire note with AI response
+- **Insert at Cursor**: Inserts AI response at the current cursor position (new in v1.0.1)
+- **New Note**: Creates a new note with AI response
+- **Note→Prompt**: Copies current note content to chat input
+- **Selected→Prompt**: Copies selected text to chat input
+- **Grammar**: Checks grammar and spelling of selected text
+- **Help**: Displays comprehensive help information
+
+**Insert at Cursor Implementation:**
+
+```typescript
+case 'insertAtCursor':
+  if (!lastChatGPTResponse) {
+    return { success: false, error: 'No ChatGPT response to insert. Send a message first.' };
+  }
+  try {
+    const noteIds = await joplin.workspace.selectedNoteIds();
+    if (noteIds.length === 0) {
+      return { success: false, error: 'No note selected. Please select a note first.' };
+    }
+    await replaceSelectedText(lastChatGPTResponse);
+    return { success: true, message: 'ChatGPT response inserted at cursor position successfully!' };
+  } catch (error: any) {
+    return { success: false, error: `Error inserting at cursor: ${error.message}` };
+  }
+```
+
+**Helper Function for Cursor Insertion:**
+
+```typescript
+async function replaceSelectedText(newText: string): Promise<void> {
+  try {
+    await joplin.commands.execute('replaceSelection', newText);
+  } catch (error) {
+    console.error('Error replacing selected text:', error);
+  }
+}
+```
+
+This uses Joplin's built-in `replaceSelection` command, which inserts text at the cursor position if no text is selected, or replaces selected text if there is a selection.
 
 ### API Key Validation
 
@@ -371,19 +528,214 @@ private validateApiKey(apiKey: string): boolean {
 
 ## Build System
 
-### Automated Build Process
+### Joplin Plugin Directory Locations
 
-The build system uses npm scripts for a streamlined development workflow:
+Joplin looks for plugins in specific directories depending on your operating system. Understanding these locations is crucial for development and deployment.
+
+#### macOS Plugin Directory
+
+**Primary Location:**
+```
+~/.config/joplin-desktop/plugins/
+```
+
+**Full Path Example:**
+```
+/Users/yourusername/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/
+```
+
+**Alternative Location (older Joplin versions):**
+```
+~/Library/Application Support/Joplin/plugins/
+```
+
+#### Windows Plugin Directory
+
+**Primary Location:**
+```
+%APPDATA%\Joplin\plugins\
+```
+
+**Full Path Examples:**
+```
+C:\Users\YourUsername\AppData\Roaming\Joplin\plugins\com.cogitations.chatgpt-toolkit\
+```
+
+**Alternative Path Format:**
+```
+%USERPROFILE%\AppData\Roaming\Joplin\plugins\
+```
+
+#### Linux Plugin Directory
+
+**Primary Location:**
+```
+~/.config/joplin-desktop/plugins/
+```
+
+**Full Path Example:**
+```
+/home/yourusername/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/
+```
+
+### How Joplin Loads Plugins
+
+1. **Plugin Discovery**: Joplin scans the plugins directory on startup
+2. **Plugin Structure**: Each plugin must be in its own subdirectory named with the plugin ID (e.g., `com.cogitations.chatgpt-toolkit`)
+3. **Required Files**: Each plugin directory must contain:
+   - `manifest.json` - Plugin metadata and configuration
+   - `index.js` - Main plugin entry point (compiled from TypeScript)
+   - `webview.js` - Webview UI script (if applicable)
+4. **Plugin Loading**: Joplin reads `manifest.json` to determine plugin version, permissions, and entry point
+
+### Build Scripts and Plugin Deployment
+
+The build system uses npm scripts that interact with these plugin directories:
 
 ```json
 {
   "scripts": {
     "build": "npm run clean && npm run generate-manifest && npm run compile-ts && npm run copy-webview && npm run create-jpl",
     "dev": "npm run generate-manifest && npm run compile-ts && npm run copy-webview && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
+    "deploy": "npm run build && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
     "dist": "scripts/package-jpl.sh"
   }
 }
 ```
+
+#### Script Breakdown
+
+**1. `npm run build`**
+- **Purpose**: Compiles and packages the plugin without deploying
+- **Actions**:
+  1. Cleans `dist/` directory
+  2. Generates `manifest.json` from `package.json`
+  3. Compiles TypeScript (`src/index.ts` → `dist/index.js`)
+  4. Copies webview script (`src/webview.js` → `dist/webview.js`)
+  5. Creates `.jpl` file in project root (TAR archive)
+- **Output**: Files in `dist/` directory + `joplin-plugin-chatgpt-toolkit.jpl` in project root
+- **Does NOT deploy**: Files remain in `dist/` directory
+
+**2. `npm run dev`**
+- **Purpose**: Fast development build with deployment (macOS/Linux only)
+- **Actions**:
+  1. Generates `manifest.json` (no clean)
+  2. Compiles TypeScript
+  3. Copies webview script
+  4. Deploys to Joplin plugin directory
+- **Limitations**:
+  - ⚠️ **Does NOT clean** - may leave stale files
+  - ⚠️ **macOS/Linux only** - hardcoded path `~/.config/joplin-desktop/plugins/`
+  - ⚠️ **Does NOT create `.jpl` file**
+- **Use Case**: Quick iteration during development (not recommended)
+
+**3. `npm run deploy`** ⭐ **Recommended**
+- **Purpose**: Complete build and deployment workflow
+- **Actions**:
+  1. Runs full `build` process (clean + compile + package)
+  2. Creates plugin directory if it doesn't exist
+  3. Copies all files from `dist/` to Joplin plugin directory
+- **Output**: 
+  - Files in `dist/` directory
+  - Files in Joplin plugin directory (ready to use)
+  - `.jpl` file in project root
+- **Limitations**:
+  - ⚠️ **macOS/Linux only** - hardcoded path `~/.config/joplin-desktop/plugins/`
+- **Use Case**: Primary development workflow
+
+**4. `npm run dist`**
+- **Purpose**: Create distributable `.jpl` file for sharing/installation
+- **Actions**:
+  1. Runs `scripts/package-jpl.sh` script
+  2. Script runs `npm run build` internally
+  3. Creates TAR archive in `publish/` directory
+- **Output**: `publish/joplin-plugin-chatgpt-toolkit.jpl`
+- **Use Case**: Creating plugin files for distribution or installation via Joplin's "Install from file" feature
+
+### Cross-Platform Development
+
+**Current Limitation**: The `deploy` and `dev` scripts use hardcoded macOS/Linux paths. For Windows development, you have two options:
+
+#### Option 1: Manual Deployment (Windows)
+
+After running `npm run build`, manually copy files:
+
+```powershell
+# Windows PowerShell
+$pluginDir = "$env:APPDATA\Joplin\plugins\com.cogitations.chatgpt-toolkit"
+New-Item -ItemType Directory -Force -Path $pluginDir
+Copy-Item -Path "dist\*" -Destination $pluginDir -Recurse -Force
+```
+
+Or using Command Prompt:
+```cmd
+REM Windows CMD
+mkdir "%APPDATA%\Joplin\plugins\com.cogitations.chatgpt-toolkit"
+xcopy /E /Y dist\* "%APPDATA%\Joplin\plugins\com.cogitations.chatgpt-toolkit\"
+```
+
+#### Option 2: Modify Scripts for Windows
+
+You can modify `package.json` to detect the platform:
+
+```json
+{
+  "scripts": {
+    "deploy": "npm run build && node scripts/deploy.js"
+  }
+}
+```
+
+Then create `scripts/deploy.js`:
+```javascript
+const os = require('os');
+const path = require('path');
+const { execSync } = require('child_process');
+
+const platform = os.platform();
+let pluginDir;
+
+if (platform === 'win32') {
+  pluginDir = path.join(process.env.APPDATA, 'Joplin', 'plugins', 'com.cogitations.chatgpt-toolkit');
+} else {
+  pluginDir = path.join(os.homedir(), '.config', 'joplin-desktop', 'plugins', 'com.cogitations.chatgpt-toolkit');
+}
+
+// Create directory and copy files
+execSync(`mkdir -p "${pluginDir}"`, { shell: true });
+execSync(`cp -r dist/* "${pluginDir}/"`, { shell: true });
+```
+
+### Recommended Development Workflow
+
+**For development and testing, use:**
+```bash
+npm run deploy
+```
+
+This single command:
+1. **Cleans** the `dist/` directory (removes old files)
+2. **Builds** everything fresh (TypeScript compilation, manifest generation, webview copy)
+3. **Creates `.jpl` file** in project root
+4. **Deploys** to Joplin's plugin directory
+
+**After deploying:**
+1. Reload the plugin in Joplin:
+   - Go to **Tools** → **Options** → **Plugins**
+   - Find "ChatGPT Toolkit"
+   - Click **Disable**, then **Enable** again
+2. Or restart Joplin completely
+
+**Why `deploy` instead of `dev`?**
+- `dev` does NOT clean old files, which can cause stale code issues
+- `deploy` ensures a clean build every time
+- `deploy` includes the full build process (clean + build + deploy)
+- `deploy` creates the `.jpl` file for testing installation
+
+**Other commands:**
+- `npm run build` - Only builds (doesn't deploy) - use for creating `.jpl` files
+- `npm run dev` - Fast build without clean (may leave old files) - not recommended
+- `npm run dist` - Creates distributable `.jpl` file in `publish/` directory for sharing
 
 ### Manifest Generation
 

@@ -43,6 +43,39 @@
     });
   });
 
+  // Model selector
+  const modelSelector = document.getElementById('modelSelector');
+  if (modelSelector) {
+    // Load current model from settings
+    webviewApi.postMessage({
+      type: 'getCurrentModel'
+    }).then(response => {
+      if (response && response.model) {
+        modelSelector.value = response.model;
+      }
+    }).catch(error => {
+      console.error('Error loading current model:', error);
+    });
+
+    // Handle model selection changes
+    modelSelector.addEventListener('change', async (event) => {
+      const selectedModel = event.target.value;
+      try {
+        const response = await webviewApi.postMessage({
+          type: 'updateModel',
+          model: selectedModel
+        });
+        if (response && response.success) {
+          console.log('Model updated to:', selectedModel);
+        } else {
+          console.error('Failed to update model:', response?.error);
+        }
+      } catch (error) {
+        console.error('Error updating model:', error);
+      }
+    });
+  }
+
   // Auto-resize textarea
   chatInput.addEventListener('input', function() {
     this.style.height = 'auto';
@@ -264,6 +297,12 @@
           break;
         case 'addMessage':
           addMessage(actualMessage.sender, actualMessage.content);
+          break;
+        case 'setCurrentModel':
+          // Set the model selector to the current model
+          if (modelSelector && actualMessage.model) {
+            modelSelector.value = actualMessage.model;
+          }
           break;
         case 'showCloseMessage':
           showCloseMessage();

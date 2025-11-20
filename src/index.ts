@@ -76,9 +76,9 @@ class ChatGPTAPI {
   constructor() {
     this.settings = {
       openaiApiKey: '',
-      openaiModel: 'gpt-4.1',
+      openaiModel: 'gpt-5.1',
       maxTokens: 1000,
-      systemPrompt: 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance.',
+      systemPrompt: 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance. Source: https://github.com/ishapiro/joplin-chatgpt-plugin',
       autoSave: true,
       reasoningEffort: 'low',
       verbosity: 'low'
@@ -87,12 +87,160 @@ class ChatGPTAPI {
 
   async loadSettings(): Promise<void> {
     this.settings.openaiApiKey = await joplin.settings.value('openaiApiKey');
-    this.settings.openaiModel = await joplin.settings.value('openaiModel');
+    const modelValue = await joplin.settings.value('openaiModel');
+    
+    // Validate model if not blank
+    if (modelValue && modelValue.trim() !== '') {
+      const isValid = await this.validateModel(modelValue);
+      if (!isValid.valid) {
+        console.warn('Invalid model specified:', modelValue);
+        console.warn('Valid models:', isValid.validModels.join(', '));
+        // Show error to user
+        await joplin.views.dialogs.showMessageBox(
+          `Invalid model: "${modelValue}"\n\n` +
+          `Valid models are:\n${isValid.validModels.join(', ')}\n\n` +
+          `Leave the field blank to auto-select the latest general model.`
+        );
+        // Reset to blank to trigger auto-select
+        await joplin.settings.setValue('openaiModel', '');
+        this.settings.openaiModel = '';
+      } else {
+        this.settings.openaiModel = modelValue;
+      }
+    } else {
+      this.settings.openaiModel = '';
+    }
+    
     this.settings.maxTokens = await joplin.settings.value('maxTokens');
-    this.settings.systemPrompt = await joplin.settings.value('systemPrompt');
+    
+    // Load system prompt from file (always returns a default if file doesn't exist)
+    try {
+      this.settings.systemPrompt = await this.loadSystemPromptFromFile();
+      // Ensure we always have a non-empty system prompt
+      if (!this.settings.systemPrompt || this.settings.systemPrompt.trim().length === 0) {
+        console.warn('[ChatGPT API] System prompt was empty, using default');
+        this.settings.systemPrompt = 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance. Source: https://github.com/ishapiro/joplin-chatgpt-plugin';
+      }
+    } catch (error: any) {
+      console.error('[ChatGPT API] Error loading system prompt, using default:', error);
+      // Fallback to hardcoded default
+      this.settings.systemPrompt = 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance. Source: https://github.com/ishapiro/joplin-chatgpt-plugin';
+    }
+    
     this.settings.autoSave = await joplin.settings.value('autoSave');
     this.settings.reasoningEffort = await joplin.settings.value('reasoningEffort');
     this.settings.verbosity = await joplin.settings.value('verbosity');
+  }
+
+  // Load system prompt from file (similar to Joplin's styles)
+  async loadSystemPromptFromFile(): Promise<string> {
+    // Default prompt - always use this as fallback
+    const defaultPrompt = 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance. Source: https://github.com/ishapiro/joplin-chatgpt-plugin';
+    
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+      // Get plugin data directory
+      const dataDir = await joplin.plugins.dataDir('com.cogitations.chatgpt-toolkit');
+      const promptFile = path.join(dataDir, 'system-prompt.txt');
+      
+      // Check if file exists and has content
+      if (fs.existsSync(promptFile)) {
+        try {
+          const content = fs.readFileSync(promptFile, 'utf8');
+          // Only use file content if it's not empty after trimming
+          if (content && content.trim().length > 0) {
+            console.info('[ChatGPT API] Loaded system prompt from file:', promptFile);
+            return content.trim();
+          } else {
+            console.warn('[ChatGPT API] System prompt file exists but is empty, using default');
+          }
+        } catch (readError: any) {
+          console.error('[ChatGPT API] Error reading system prompt file:', readError);
+          // Continue to create/use default
+        }
+      }
+      
+      // File doesn't exist, is empty, or couldn't be read - use default
+      console.info('[ChatGPT API] Using default system prompt (file not found or empty)');
+      
+      // Ensure directory exists before writing
+      try {
+        if (!fs.existsSync(dataDir)) {
+          fs.mkdirSync(dataDir, { recursive: true });
+        }
+        
+        // Write default prompt to file for future use
+        fs.writeFileSync(promptFile, defaultPrompt, 'utf8');
+        console.info('[ChatGPT API] Created default system prompt file:', promptFile);
+        
+        // Store file path in settings for reference
+        try {
+          await joplin.settings.setValue('systemPromptFile', promptFile);
+        } catch (settingsError: any) {
+          console.warn('[ChatGPT API] Could not save system prompt file path to settings:', settingsError);
+          // Non-critical, continue
+        }
+      } catch (writeError: any) {
+        console.error('[ChatGPT API] Could not create system prompt file:', writeError);
+        // Non-critical, we'll still use the default prompt
+      }
+      
+      // Always return default if file doesn't exist or is empty
+      return defaultPrompt;
+    } catch (error: any) {
+      console.error('[ChatGPT API] Error loading system prompt from file:', error);
+      // Always return default on any error
+      return defaultPrompt;
+    }
+  }
+
+  // Get system prompt file path
+  async getSystemPromptFilePath(): Promise<string> {
+    const path = require('path');
+    const dataDir = await joplin.plugins.dataDir('com.cogitations.chatgpt-toolkit');
+    return path.join(dataDir, 'system-prompt.txt');
+  }
+
+  async validateModel(modelId: string): Promise<{valid: boolean, validModels: string[]}> {
+    // Get available models from storage
+    let availableModels: ModelInfo[] = [];
+    try {
+      const storedModels = await joplin.data.get(['plugins', 'com.cogitations.chatgpt-toolkit', 'data', 'modelsList']);
+      if (storedModels && storedModels.value) {
+        availableModels = JSON.parse(storedModels.value);
+      }
+    } catch (e) {
+      // Models not in storage, use defaults
+    }
+    
+    // If no stored models, use default list
+    if (availableModels.length === 0) {
+      const now = Math.floor(Date.now() / 1000);
+      availableModels = [
+        { id: 'gpt-5.1', created: now },
+        { id: 'gpt-5', created: now - 86400 },
+        { id: 'gpt-5-mini', created: now - 172800 },
+        { id: 'gpt-5-nano', created: now - 259200 },
+        { id: 'gpt-4.1', created: now - 345600 },
+        { id: 'gpt-4.1-mini', created: now - 432000 },
+        { id: 'gpt-4.1-nano', created: now - 518400 },
+        { id: 'gpt-4o', created: now - 604800 },
+        { id: 'gpt-4o-mini', created: now - 691200 },
+        { id: 'o1', created: now - 1036800 },
+        { id: 'o1-preview', created: now - 1123200 },
+        { id: 'o3', created: now - 1209600 },
+        { id: 'o3-mini', created: now - 1296000 },
+        { id: 'o4-mini', created: now - 1382400 }
+      ];
+    }
+    
+    const validModelIds = availableModels.map(m => m.id);
+    return {
+      valid: validModelIds.includes(modelId),
+      validModels: validModelIds.sort()
+    };
   }
 
   clearConversationHistory(): void {
@@ -369,39 +517,178 @@ Please provide only the corrected version without any additional commentary.`;
   }
 }
 
+// Interface for model data with metadata
+interface ModelInfo {
+  id: string;
+  created: number;
+  owned_by?: string;
+}
+
+// Function to fetch available models from OpenAI API
+async function fetchAvailableModels(apiKey: string): Promise<ModelInfo[]> {
+  try {
+    const response = await fetch('https://api.openai.com/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn('Failed to fetch models from OpenAI API:', response.status, response.statusText);
+      return [];
+    }
+
+    const data = await response.json();
+    if (data.data && Array.isArray(data.data)) {
+      // Filter and extract model info for chat/completion models
+      // Only include gpt-4o and newer models
+      const models: ModelInfo[] = data.data
+        .filter((model: any) => {
+          const id = model.id || '';
+          
+          // Filter for relevant models (chat models, not embeddings, etc.)
+          const isRelevantModel = id.includes('gpt') || id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
+          
+          // Only include gpt-4o and newer (exclude gpt-4, gpt-4-turbo, gpt-3.5-turbo)
+          const is4oOrNewer = 
+            id.startsWith('gpt-4o') ||           // gpt-4o, gpt-4o-mini
+            id.startsWith('gpt-4.1') ||          // gpt-4.1, gpt-4.1-mini, gpt-4.1-nano
+            id.startsWith('gpt-5') ||            // gpt-5, gpt-5.1, gpt-5-mini, gpt-5-nano
+            id.startsWith('o1') ||               // o1, o1-preview
+            id.startsWith('o3') ||               // o3, o3-mini
+            id.startsWith('o4');                 // o4-mini
+          
+          return isRelevantModel && is4oOrNewer;
+        })
+        .map((model: any) => ({
+          id: model.id,
+          created: model.created || 0,
+          owned_by: model.owned_by
+        }))
+        // Sort by created date (newest first)
+        .sort((a: ModelInfo, b: ModelInfo) => b.created - a.created);
+      
+      console.info('Fetched', models.length, 'available models from OpenAI API (gpt-4o and newer)');
+      return models;
+    }
+    return [];
+  } catch (error: any) {
+    console.warn('Error fetching models from OpenAI API:', error.message);
+    return [];
+  }
+}
+
 // Register the plugin
 joplin.plugins.register({
   onStart: async function() {
     console.info('ChatGPT Toolkit Plugin started!');
     
     try {
+      // ===== LOAD MODELS FOR SETTINGS DROPDOWN =====
+      // Try to load stored models for the settings dropdown
+      let modelsForSettings: ModelInfo[] = [];
+      const settingsModelsKey = 'modelsList';
+      
+      try {
+        const storedModels = await joplin.data.get(['plugins', 'com.cogitations.chatgpt-toolkit', 'data', settingsModelsKey]);
+        if (storedModels && storedModels.value) {
+          modelsForSettings = JSON.parse(storedModels.value);
+          modelsForSettings.sort((a: ModelInfo, b: ModelInfo) => b.created - a.created);
+          console.info('Loaded', modelsForSettings.length, 'models for settings dropdown');
+        }
+      } catch (e) {
+        // Models not in storage yet, will use defaults
+      }
+      
+      // Default models if none are stored
+      if (modelsForSettings.length === 0) {
+        const now = Math.floor(Date.now() / 1000);
+        modelsForSettings = [
+          { id: 'gpt-5.1', created: now },
+          { id: 'gpt-5', created: now - 86400 },
+          { id: 'gpt-5-mini', created: now - 172800 },
+          { id: 'gpt-5-nano', created: now - 259200 },
+          { id: 'gpt-4.1', created: now - 345600 },
+          { id: 'gpt-4.1-mini', created: now - 432000 },
+          { id: 'gpt-4.1-nano', created: now - 518400 },
+          { id: 'gpt-4o', created: now - 604800 },
+          { id: 'gpt-4o-mini', created: now - 691200 },
+          { id: 'o1', created: now - 1036800 },
+          { id: 'o1-preview', created: now - 1123200 },
+          { id: 'o3', created: now - 1209600 },
+          { id: 'o3-mini', created: now - 1296000 },
+          { id: 'o4-mini', created: now - 1382400 }
+        ];
+      }
+      
+      // Create options object for dropdown (with blank option for auto-select)
+      const settingsModelOptions: {[key: string]: string} = {
+        '': '(Auto-select latest general model)'
+      };
+      
+      // Add all models with formatted display names
+      modelsForSettings.forEach(model => {
+        const displayName = model.id === 'gpt-5.1' ? 'GPT-5.1 (Latest)' : 
+                           model.id.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+        settingsModelOptions[model.id] = displayName;
+      });
+      
+      // Debug: Log the options object (using console.log for better visibility)
+      console.log('=== ChatGPT Toolkit Settings Debug ===');
+      console.log('Settings dropdown options:', JSON.stringify(settingsModelOptions, null, 2));
+      console.log('Number of model options:', Object.keys(settingsModelOptions).length);
+      console.log('Models for settings:', modelsForSettings.map(m => m.id).join(', '));
+      
       // ===== SETTINGS SETUP =====
-      console.info('Setting up ChatGPT Toolkit settings...');
+      console.log('Setting up ChatGPT Toolkit settings...');
+      
+      // Get system prompt file path for default value
+      const path = require('path');
+      let systemPromptFilePath = '';
+      try {
+        const dataDir = await joplin.plugins.dataDir('com.cogitations.chatgpt-toolkit');
+        systemPromptFilePath = path.join(dataDir, 'system-prompt.txt');
+      } catch (error: any) {
+        console.warn('Could not get plugin data directory for system prompt file path:', error);
+        // Will be set later when file is created
+      }
       
       // Create a settings section so options appear in Joplin's UI
+      const pluginVersion = '1.1.1';
+      const loadTimestamp = new Date().toLocaleString();
       await joplin.settings.registerSection('chatgptToolkit', {
         label: 'ChatGPT Toolkit',
         iconName: 'fas fa-robot',
-        description: 'AI-powered writing assistant for Joplin. Source code and documentation: https://github.com/ishapiro/joplin-chatgpt-plugin'
+        description: `AI-powered writing assistant for Joplin. Version: ${pluginVersion} | Loaded: ${loadTimestamp} | Source: https://github.com/ishapiro/joplin-chatgpt-plugin`
       });
 
-      await joplin.settings.registerSettings({
-        'openaiApiKey': {
-          value: '',
-          type: SettingItemType.String,
-          label: 'OpenAI API Key',
-          description: 'Your OpenAI API key for ChatGPT access. Get one from https://platform.openai.com/api-keys',
-          public: true,
-          section: 'chatgptToolkit',
-        },
-        'openaiModel': {
-          value: 'gpt-4.1',
-          type: SettingItemType.String,
-          label: 'OpenAI Model',
-          description: 'The OpenAI model to use. Supported models: GPT-5 family (gpt-5, gpt-5-mini, gpt-5-nano), GPT-4.1 family (gpt-4.1, gpt-4.1-mini, gpt-4.1-nano), GPT-4o family (gpt-4o, gpt-4o-mini), Reasoning models (o1, o3, o4-mini)',
-          public: true,
-          section: 'chatgptToolkit',
-        },
+      try {
+        console.log('Registering settings with options:', {
+          modelOptionsCount: Object.keys(settingsModelOptions).length,
+          hasOptions: !!settingsModelOptions,
+          optionsKeys: Object.keys(settingsModelOptions).slice(0, 5).join(', ') + '...'
+        });
+        
+        await joplin.settings.registerSettings({
+          'openaiApiKey': {
+            value: '',
+            type: SettingItemType.String,
+            label: 'OpenAI API Key',
+            description: 'Your OpenAI API key for ChatGPT access. Get one from https://platform.openai.com/api-keys',
+            public: true,
+            section: 'chatgptToolkit',
+          },
+          'openaiModel': {
+            value: '',
+            type: SettingItemType.String,
+            label: 'OpenAI Model',
+            description: 'Select a model from the dropdown, or choose "(Auto-select latest general model)" to automatically use the newest general model. Models are filtered to gpt-4o and newer.',
+            public: true,
+            section: 'chatgptToolkit',
+            options: settingsModelOptions,
+          },
         'maxTokens': {
           value: 1000,
           type: SettingItemType.Int,
@@ -410,12 +697,28 @@ joplin.plugins.register({
           public: true,
           section: 'chatgptToolkit',
         },
-        'systemPrompt': {
-          value: 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance. Source: https://github.com/ishapiro/joplin-chatgpt-plugin',
+        'systemPromptFile': {
+          value: systemPromptFilePath || 'Will be set when plugin loads',
           type: SettingItemType.String,
-          label: 'System Prompt',
-          description: 'The system prompt that defines how ChatGPT should behave. You can customize this to change the assistant\'s personality and behavior.',
+          label: 'System Prompt File',
+          description: 'Path to the system prompt file. Click the button below to open it in your default editor. After editing, reload the plugin to use the new prompt.',
           public: true,
+          section: 'chatgptToolkit',
+        },
+        'openSystemPromptFileButton': {
+          value: false,
+          type: SettingItemType.Bool,
+          label: 'Open System Prompt File',
+          description: 'Click to open the system prompt file in your default text editor. The file will be created with a default prompt if it doesn\'t exist.',
+          public: true,
+          section: 'chatgptToolkit',
+        },
+        'openaiModelUserSet': {
+          value: false,
+          type: SettingItemType.Bool,
+          label: 'Model User Set Flag',
+          description: 'Internal flag to track if user manually set the model',
+          public: false,
           section: 'chatgptToolkit',
         },
         'autoSave': {
@@ -442,7 +745,110 @@ joplin.plugins.register({
           public: true,
           section: 'chatgptToolkit',
         },
+        'pluginVersion': {
+          value: `${pluginVersion} | Loaded: ${loadTimestamp}`,
+          type: SettingItemType.String,
+          label: 'Plugin Version & Status',
+          description: 'Shows the current plugin version and when it was last loaded. This helps verify you are running the latest code.',
+          public: true,
+          section: 'chatgptToolkit',
+          isEnum: false,
+        },
       });
+      
+      // Debug: Log settings registration
+      console.log('Settings registered successfully');
+      console.log('Model setting options count:', Object.keys(settingsModelOptions).length);
+      console.log('System prompt file path:', systemPromptFilePath);
+      console.log('=== End Settings Debug ===');
+      
+      // Update system prompt file path after it's created
+      try {
+        const chatGPTAPI = new ChatGPTAPI();
+        await chatGPTAPI.loadSettings(); // This will create the file if it doesn't exist
+        const actualPath = await chatGPTAPI.getSystemPromptFilePath();
+        if (actualPath && actualPath !== systemPromptFilePath) {
+          await joplin.settings.setValue('systemPromptFile', actualPath);
+          systemPromptFilePath = actualPath;
+        }
+      } catch (error: any) {
+        console.warn('Could not update system prompt file path:', error);
+      }
+      
+      // Handle button click for opening system prompt file
+      await joplin.settings.onChange(async (event: any) => {
+        if (event.keys.includes('openSystemPromptFileButton')) {
+          // Reset the button immediately
+          await joplin.settings.setValue('openSystemPromptFileButton', false);
+          
+          // Open the file
+          try {
+            await joplin.commands.execute('openSystemPromptFile');
+          } catch (error: any) {
+            console.error('Error opening system prompt file from settings button:', error);
+            await joplin.views.dialogs.showMessageBox(
+              `Error opening system prompt file: ${error.message}\n\n` +
+              `You can also use the Command Palette (Ctrl+Shift+P / Cmd+Shift+P) and search for "Open System Prompt File".`
+            );
+          }
+        }
+      });
+      
+      } catch (error) {
+        console.error('ERROR registering settings:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        throw error; // Re-throw to see the error in Joplin
+      }
+
+      // ===== SET DEFAULT MODEL IF BLANK =====
+      // Check if model is blank or not user-set, and set to latest general model
+      try {
+        const currentModel = await joplin.settings.value('openaiModel');
+        const modelUserSet = await joplin.settings.value('openaiModelUserSet');
+        
+        // If model is blank/empty or not user-set, fetch and set the latest general model
+        if ((!currentModel || currentModel.trim() === '') || !modelUserSet) {
+          // Try to get available models (from storage or fetch if needed)
+          let modelsToCheck: ModelInfo[] = [];
+          const modelsListKey = 'modelsList';
+          
+          // Check if models are already fetched
+          try {
+            const storedModels = await joplin.data.get(['plugins', 'com.cogitations.chatgpt-toolkit', 'data', modelsListKey]);
+            if (storedModels && storedModels.value) {
+              modelsToCheck = JSON.parse(storedModels.value);
+              modelsToCheck.sort((a: ModelInfo, b: ModelInfo) => b.created - a.created);
+            }
+          } catch (e) {
+            // Models not in storage yet, will be fetched later
+          }
+          
+          // If we have models, find the latest general one
+          if (modelsToCheck.length > 0) {
+            const isGeneralModel = (id: string): boolean => {
+              const gptPattern = /^gpt-\d+(\.\d+)?[a-z]?$/;
+              const oPattern = /^o\d+$/;
+              if (id.includes('-') && !id.match(/^gpt-\d+(\.\d+)?[a-z]?$/)) {
+                return false;
+              }
+              return gptPattern.test(id) || oPattern.test(id);
+            };
+            
+            const latestGeneralModel = modelsToCheck.find(model => isGeneralModel(model.id));
+            if (latestGeneralModel) {
+              await joplin.settings.setValue('openaiModel', latestGeneralModel.id);
+              await joplin.settings.setValue('openaiModelUserSet', false);
+              console.info('Set default model in settings to:', latestGeneralModel.id);
+            }
+          } else {
+            // Fallback to hardcoded default
+            await joplin.settings.setValue('openaiModel', 'gpt-5.1');
+            await joplin.settings.setValue('openaiModelUserSet', false);
+          }
+        }
+      } catch (error: any) {
+        console.warn('Error setting default model in settings:', error.message);
+      }
 
       // Create global ChatGPT API instance
       const chatGPTAPI = new ChatGPTAPI();
@@ -574,6 +980,153 @@ joplin.plugins.register({
         },
       });
 
+      // ===== FETCH AVAILABLE MODELS (ONCE) =====
+      let availableModels: ModelInfo[] = [];
+      const modelsFetchedKey = 'modelsFetched';
+      const modelsListKey = 'modelsList';
+      
+      try {
+        // Check if we've already fetched models
+        let modelsFetched = false;
+        try {
+          const fetched = await joplin.data.get(['plugins', 'com.cogitations.chatgpt-toolkit', 'data', modelsFetchedKey]);
+          modelsFetched = fetched && fetched.value === 'true';
+        } catch (e) {
+          // Key doesn't exist yet, that's fine
+        }
+        
+        if (!modelsFetched) {
+          // First time - fetch models from API
+          console.info('Fetching available models from OpenAI API (first time only)...');
+          const apiKey = await joplin.settings.value('openaiApiKey');
+          if (apiKey && apiKey.trim() !== '') {
+            availableModels = await fetchAvailableModels(apiKey);
+            if (availableModels.length > 0) {
+              // Store the models list (already sorted by creation date, newest first)
+              await joplin.data.put(['plugins', 'com.cogitations.chatgpt-toolkit', 'data', modelsListKey], null, { value: JSON.stringify(availableModels) });
+              // Mark as fetched
+              await joplin.data.put(['plugins', 'com.cogitations.chatgpt-toolkit', 'data', modelsFetchedKey], null, { value: 'true' });
+              console.info('Models fetched and stored successfully:', availableModels.length, 'models');
+              
+              // Set the latest general model (not variants) as default if no model is set
+              const currentModel = await joplin.settings.value('openaiModel');
+              if (!currentModel || currentModel === 'gpt-5.1') {
+                // Find the newest general model (not variants - anything after the number)
+                const isGeneralModel = (id: string): boolean => {
+                  // General models match patterns like: gpt-4, gpt-4.1, gpt-4o, gpt-5, gpt-5.1, o1, o3
+                  // Exclude anything with a hyphen after the number/version
+                  const gptPattern = /^gpt-\d+(\.\d+)?[a-z]?$/;
+                  const oPattern = /^o\d+$/;
+                  // Explicit check: if it has a hyphen after the version pattern, it's a variant
+                  if (id.includes('-') && !id.match(/^gpt-\d+(\.\d+)?[a-z]?$/)) {
+                    return false;
+                  }
+                  return gptPattern.test(id) || oPattern.test(id);
+                };
+                const latestGeneralModel = availableModels.find(model => isGeneralModel(model.id));
+                const latestModel = latestGeneralModel ? latestGeneralModel.id : availableModels[0].id;
+                await joplin.settings.setValue('openaiModel', latestModel);
+                console.info('Set latest general model as default:', latestModel);
+              }
+            } else {
+              console.warn('No models returned from API, will use default list');
+            }
+          } else {
+            console.info('No API key set yet, will use default model list');
+          }
+        } else {
+          // Already fetched - load from storage
+          try {
+            const storedModels = await joplin.data.get(['plugins', 'com.cogitations.chatgpt-toolkit', 'data', modelsListKey]);
+            if (storedModels && storedModels.value) {
+              availableModels = JSON.parse(storedModels.value);
+              
+              // Filter to only include gpt-4o and newer models
+              availableModels = availableModels.filter((model: ModelInfo) => {
+                const id = model.id;
+                return id.startsWith('gpt-4o') || id.startsWith('gpt-4.1') || id.startsWith('gpt-5') ||
+                       id.startsWith('o1') || id.startsWith('o3') || id.startsWith('o4');
+              });
+              
+              // Ensure they're still sorted (newest first)
+              availableModels.sort((a: ModelInfo, b: ModelInfo) => b.created - a.created);
+              console.info('Loaded', availableModels.length, 'models from storage (gpt-4o and newer)');
+            }
+          } catch (error: any) {
+            console.warn('Error loading stored models:', error.message);
+          }
+        }
+      } catch (error: any) {
+        // If data storage fails, just use default models
+        console.warn('Error accessing plugin data storage:', error.message);
+      }
+
+      // Default model list (fallback if API fetch fails or no API key)
+      // Only include gpt-4o and newer models, sorted newest to oldest
+      // Using Unix timestamps (seconds since epoch) for consistency with API
+      const now = Math.floor(Date.now() / 1000);
+      
+      const defaultModels: ModelInfo[] = [
+        { id: 'gpt-5.1', created: now },
+        { id: 'gpt-5', created: now - 86400 }, // 1 day ago
+        { id: 'gpt-5-mini', created: now - 172800 }, // 2 days ago
+        { id: 'gpt-5-nano', created: now - 259200 }, // 3 days ago
+        { id: 'gpt-4.1', created: now - 345600 }, // 4 days ago
+        { id: 'gpt-4.1-mini', created: now - 432000 }, // 5 days ago
+        { id: 'gpt-4.1-nano', created: now - 518400 }, // 6 days ago
+        { id: 'gpt-4o', created: now - 604800 }, // 7 days ago
+        { id: 'gpt-4o-mini', created: now - 691200 }, // 8 days ago
+        { id: 'o1', created: now - 1036800 }, // 12 days ago
+        { id: 'o1-preview', created: now - 1123200 }, // 13 days ago
+        { id: 'o3', created: now - 1209600 }, // 14 days ago
+        { id: 'o3-mini', created: now - 1296000 }, // 15 days ago
+        { id: 'o4-mini', created: now - 1382400 } // 16 days ago
+      ];
+      
+      // Use fetched models if available, otherwise use default
+      const modelsToUse = availableModels.length > 0 ? availableModels : defaultModels;
+      
+      // Find the newest general model (not variants - anything after the number)
+      const isGeneralModel = (id: string): boolean => {
+        // General models match patterns like: gpt-4, gpt-4.1, gpt-4o, gpt-5, gpt-5.1, o1, o3
+        // Exclude anything with a hyphen after the number/version (e.g., gpt-4-mini, gpt-4-codex, gpt-5.1-codex, o1-preview)
+        
+        // For GPT models: must end exactly after version number (optionally with single letter like 'o')
+        // Pattern: gpt- followed by number, optionally .number, optionally a single letter, then end
+        // Must NOT have any additional hyphens or text
+        const gptPattern = /^gpt-\d+(\.\d+)?[a-z]?$/;
+        
+        // For o-models: o1, o3 are general (no hyphen after number)
+        const oPattern = /^o\d+$/;
+        
+        // Explicit check: if it has a hyphen after the version pattern, it's a variant
+        if (id.includes('-') && !id.match(/^gpt-\d+(\.\d+)?[a-z]?$/)) {
+          return false;
+        }
+        
+        return gptPattern.test(id) || oPattern.test(id);
+      };
+      
+      const latestGeneralModel = modelsToUse.find(model => isGeneralModel(model.id));
+      const latestModel = latestGeneralModel ? latestGeneralModel.id : modelsToUse[0].id;
+      
+      // Generate model options HTML
+      const savedModel = await joplin.settings.value('openaiModel');
+      const selectedModel = savedModel || latestModel;
+      
+      // Update setting if it's not set or is the old default
+      if (!savedModel || savedModel === 'gpt-5.1') {
+        await joplin.settings.setValue('openaiModel', latestModel);
+      }
+      
+      const modelOptions = modelsToUse.map((model, index) => {
+        const isSelected = model.id === selectedModel ? ' selected' : '';
+        const isLatest = index === 0;
+        const displayName = isLatest ? `${model.id.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())} (Latest)` : 
+                           model.id.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+        return `<option value="${model.id}"${isSelected}>${displayName}</option>`;
+      }).join('\n              ');
+
       // ===== CHAT PANEL SETUP =====
       console.info('Setting up ChatGPT chat panel...');
 
@@ -593,35 +1146,29 @@ joplin.plugins.register({
             <button class="close-button" id="closePanelButton" title="Close Panel">✕</button>
           </div>
           
+          <div class="model-selector-container">
+            <label for="modelSelector" class="model-label">Model:</label>
+            <select id="modelSelector" class="model-selector">
+              ${modelOptions}
+            </select>
+          </div>
+          
           <div class="quick-actions">
-            <button class="action-button" data-action="appendToNote">📝 Append Reply to Note</button>
-            <button class="action-button" data-action="replaceNote">🔄 Replace Note with Reply</button>
-            <button class="action-button" data-action="createNewNote">📄 New Note from Reply</button>
-            <button class="action-button" data-action="copyNoteToPrompt">📋 Copy Note to Prompt</button>
-            <button class="action-button" data-action="copySelectedToPrompt">✂️ Copy Selected to Prompt</button>
-            <button class="action-button" data-action="checkGrammar">✅ Check Selected Grammar</button>
-            <button class="action-button" data-action="showAbout">ℹ️ About & Help</button>
+            <button class="action-button" data-action="appendToNote" title="Append Reply to Note">📝 Append</button>
+            <button class="action-button" data-action="replaceNote" title="Replace Note with Reply">🔄 Replace</button>
+            <button class="action-button" data-action="insertAtCursor" title="Insert Reply at Cursor">📍 Insert</button>
+            <button class="action-button" data-action="createNewNote" title="New Note from Reply">📄 New Note</button>
+            <button class="action-button" data-action="copyNoteToPrompt" title="Copy Note to Prompt">📋 Note→Prompt</button>
+            <button class="action-button" data-action="copySelectedToPrompt" title="Copy Selected to Prompt">✂️ Selected→Prompt</button>
+            <button class="action-button" data-action="checkGrammar" title="Check Selected Grammar">✅ Grammar</button>
+            <button class="action-button" data-action="showAbout" title="Help">ℹ️ Help</button>
           </div>
           
           <div class="chat-messages" id="chatMessages">
             <div class="message assistant">
               <div class="message-content">
-                <strong>🤖 ChatGPT Toolkit v1.0</strong><br>
-                <strong>✨ Features:</strong><br>
-                • 💬 Interactive chat with conversation history<br>
-                • 📝 Copy response to clipboard or Joplin note<br>
-                • ✅ Grammar and spelling correction with preview<br>
-                • ✂️ Copy selected text to chat prompt<br>
-                • 🔒 Secure API key handling<br>
-                • 🎨 Professional UI<br>
-                <strong>🚀 Getting Started:</strong><br>
-                1. Set your OpenAI API key in <em>Settings → ChatGPT Toolkit</em><br>
-                2. Use the action buttons above or type your questions below<br>
-                3. Select text in notes to use context-aware features<br>
-                <strong>📚 Resources:</strong><br>
-                • <a href="https://github.com/ishapiro/joplin-chatgpt-plugin" target="_blank">GitHub Repository</a> - Documentation, issues, updates<br>
-                • <a href="https://platform.openai.com/api-keys" target="_blank">Get OpenAI API Key</a><br>
-                <strong>Ready to enhance your note-taking with AI? Ask me anything! 🎯</strong>
+                <strong>🤖 ChatGPT Toolkit v1.1.1</strong><br><br>
+                Click <strong>HELP</strong> to learn about ChatGPT Toolkit v1.1.1 features.
               </div>
             </div>
           </div>
@@ -664,6 +1211,7 @@ joplin.plugins.register({
             display: flex;
             flex-direction: column;
             height: 100vh;
+            width: 100%;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             background: #fafafa;
             color: #2c2c2c;
@@ -706,26 +1254,69 @@ joplin.plugins.register({
             background: rgba(0, 0, 0, 0.2);
           }
 
-          .quick-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+          .model-selector-container {
+            display: flex;
+            align-items: center;
             gap: 8px;
-            padding: 12px;
-            background: #f5f5f5;
-            border-bottom: 1px solid #e8e8e8;ug
+            padding: 8px 12px;
+            background: #f8f8f8;
+            border-bottom: 1px solid #e0e0e0;
           }
 
-          .action-button {
-            padding: 10px 14px;
+          .model-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #2c2c2c;
+            white-space: nowrap;
+          }
+
+          .model-selector {
+            flex: 1;
+            padding: 6px 10px;
             border: 1px solid #4a4a4a;
-            border-radius: 6px;
+            border-radius: 4px;
             background: #ffffff;
             color: #2c2c2c;
             font-size: 12px;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.2s ease;
+          }
+
+          .model-selector:hover {
+            border-color: #3a3a3a;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          }
+
+          .model-selector:focus {
+            outline: none;
+            border-color: #4a4a4a;
+            box-shadow: 0 0 0 2px rgba(74, 74, 74, 0.2);
+          }
+
+          .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
+            padding: 8px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #e8e8e8;
+          }
+
+          .action-button {
+            padding: 6px 8px;
+            border: 1px solid #4a4a4a;
+            border-radius: 4px;
+            background: #ffffff;
+            color: #2c2c2c;
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
 
           .action-button:hover {
@@ -1030,6 +1621,13 @@ joplin.plugins.register({
       // Show the panel
       await joplin.views.panels.show(panel);
       
+      // Send current model to webview to populate the selector
+      const currentModel = await joplin.settings.value('openaiModel') || 'gpt-5.1';
+      await joplin.views.panels.postMessage(panel, {
+        type: 'setCurrentModel',
+        model: currentModel
+      });
+      
       // Handle action function
       async function handleAction(action: string): Promise<{ success: boolean; message?: string; error?: string }> {
         try {
@@ -1049,6 +1647,23 @@ joplin.plugins.register({
               const noteToReplace = await getCurrentNote();
               await updateNoteContent(noteToReplace.id, lastChatGPTResponse);
               return { success: true, message: 'Note replaced with ChatGPT response successfully!' };
+              
+            case 'insertAtCursor':
+              if (!lastChatGPTResponse) {
+                return { success: false, error: 'No ChatGPT response to insert. Send a message first.' };
+              }
+              // Check if a note is selected
+              try {
+                const noteIds = await joplin.workspace.selectedNoteIds();
+                if (noteIds.length === 0) {
+                  return { success: false, error: 'No note selected. Please select a note first.' };
+                }
+                // Insert the response at the cursor position (replaceSelection works at cursor if no selection)
+                await replaceSelectedText(lastChatGPTResponse);
+                return { success: true, message: 'ChatGPT response inserted at cursor position successfully!' };
+              } catch (error: any) {
+                return { success: false, error: `Error inserting at cursor: ${error.message}` };
+              }
               
             case 'createNewNote':
               if (!lastChatGPTResponse) {
@@ -1127,14 +1742,51 @@ joplin.plugins.register({
               return { success: true, message: 'Grammar check completed! Please review the changes.' };
               
             case 'showAbout':
-              // Send comprehensive about information to the chat
+              // Send comprehensive help information to the chat
               await joplin.views.panels.postMessage(panel, {
                 type: 'addMessage',
                 sender: 'assistant',
-                content: `<strong>🤖 ChatGPT Toolkit v1.0</strong><br><strong>📋 Full Feature List:</strong><br>• <strong>💬 Interactive Chat:</strong> Full conversation with ChatGPT with history<br>• <strong>📝 Smart Actions:</strong> Append, replace, or create new notes from responses<br>• <strong>✅ Grammar Checking:</strong> AI-powered grammar and spelling correction<br>• <strong>✂️ Text Integration:</strong> Copy selected text or entire notes to prompts<br>• <strong>🔒 Security:</strong> Secure API key storage and XSS protection<br>• <strong>🎨 Modern UI:</strong> Clean interface<br>• <strong>📚 Conversation History:</strong> Maintains context across exchanges<br><strong>🛠️ Technical Details:</strong><br>• <strong>Models Supported:</strong> GPT-5, GPT-4.1, GPT-4o, o1, o3, o4-mini series<br>• <strong>API:</strong> Latest OpenAI API with reasoning support<br>• <strong>Security:</strong> Input validation, content sanitization, secure token handling<br>• <strong>Performance:</strong> Token-aware history trimming, efficient API calls<br><strong>🔗 Resources & Support:</strong><br>• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin" target="_blank"><strong>📁 GitHub Repository</strong></a> - Source code, documentation, issues<br>• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin/blob/main/README.md" target="_blank"><strong>📖 Documentation</strong></a> - Complete setup and usage guide<br>• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin/issues" target="_blank"><strong>🐛 Report Issues</strong></a> - Bug reports and feature requests<br>• <a href="https://platform.openai.com/api-keys" target="_blank"><strong>🔑 Get API Key</strong></a> - OpenAI API key setup<br>• <a href="https://joplinapp.org/plugins/" target="_blank"><strong>💬 Joplin Plugin Forum</strong></a> - Community support<br><strong>👨‍💻 Developer:</strong> Irv Shapiro / Cogitations, LLC<br><strong>📄 License:</strong> MIT License<br><strong>🏷️ Version:</strong> 1.0.0<br><strong>🏢 Learn about Cogitations, LLC:</strong> <a href="https://cogitations.com" target="_blank">https://cogitations.com</a><br><em>Thank you for using ChatGPT Toolkit! ⭐ Star the repo if you find it helpful!</em>`
+                content: `<strong>🤖 ChatGPT Toolkit v1.1.1 - Help & Features</strong><br><br>
+<strong>📋 Action Buttons:</strong><br>
+• <strong>📝 Append</strong> - Appends the AI response to the end of the current note<br>
+• <strong>🔄 Replace</strong> - Replaces the entire current note with the AI response<br>
+• <strong>📍 Insert</strong> - Inserts the AI response at your cursor position in the note<br>
+• <strong>📄 New Note</strong> - Creates a new note with the AI response<br>
+• <strong>📋 Note→Prompt</strong> - Copies the entire current note content to the chat prompt<br>
+• <strong>✂️ Selected→Prompt</strong> - Copies your selected text to the chat prompt<br>
+• <strong>✅ Grammar</strong> - Checks grammar and spelling of selected text with preview<br>
+• <strong>ℹ️ Help</strong> - Shows this help information<br><br>
+<strong>✨ Features:</strong><br>
+• 💬 Interactive chat with conversation history<br>
+• 📝 Copy response to clipboard or Joplin note<br>
+• ✅ Grammar and spelling correction with preview<br>
+• ✂️ Copy selected text to chat prompt<br>
+• 🔒 Secure API key handling<br>
+• 🎨 Professional UI<br>
+• 📚 Conversation history maintains context across exchanges<br><br>
+<strong>🚀 Getting Started:</strong><br>
+1. Set your OpenAI API key in <em>Settings → ChatGPT Toolkit</em><br>
+2. Use the action buttons above or type your questions in the prompt field<br>
+3. Select text in notes to use context-aware features like grammar checking<br>
+4. Press Enter to send messages, or Shift+Enter for a new line<br><br>
+<strong>🛠️ Technical Details:</strong><br>
+• <strong>Models Supported:</strong> GPT-5, GPT-4.1, GPT-4o, o1, o3, o4-mini series<br>
+• <strong>API:</strong> Latest OpenAI API with reasoning support<br>
+• <strong>Security:</strong> Input validation, content sanitization, secure token handling<br>
+• <strong>Performance:</strong> Token-aware history trimming, efficient API calls<br><br>
+<strong>📚 Resources:</strong><br>
+• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin" target="_blank">GitHub Repository</a> - Documentation, issues, updates<br>
+• <a href="https://platform.openai.com/api-keys" target="_blank">Get OpenAI API Key</a><br>
+• <a href="https://github.com/ishapiro/joplin-chatgpt-plugin/issues" target="_blank">Report Issues</a> - Bug reports and feature requests<br>
+• <a href="https://joplinapp.org/plugins/" target="_blank">Joplin Plugin Forum</a> - Community support<br><br>
+<strong>👨‍💻 Developer:</strong> Irv Shapiro / Cogitations, LLC<br>
+<strong>📄 License:</strong> MIT License<br>
+<strong>🏷️ Version:</strong> 1.1.1<br>
+<strong>🏢 Learn about Cogitations, LLC:</strong> <a href="https://cogitations.com" target="_blank">https://cogitations.com</a><br><br>
+<em>Thank you for using ChatGPT Toolkit! ⭐ Star the repo if you find it helpful!</em>`
               });
               
-              return { success: true, message: 'About information displayed' };
+              return { success: true, message: 'Help information displayed' };
               
             default:
               return { success: false, error: 'Unknown action: ' + action };
@@ -1152,6 +1804,20 @@ joplin.plugins.register({
             const response = await chatGPTAPI.sendMessage(message.message || '');
             lastChatGPTResponse = response; // Store for later use
             return { success: true, content: response };
+          } else if (message.type === 'getCurrentModel') {
+            // Return the current model setting
+            const currentModel = await joplin.settings.value('openaiModel') || 'gpt-5.1';
+            return { success: true, model: currentModel };
+          } else if (message.type === 'updateModel') {
+            // Update the model setting
+            const modelToSet = (message as any).model || message.content;
+            // Allow empty string for auto-select
+            await joplin.settings.setValue('openaiModel', modelToSet || '');
+            // Mark as user-set when changed from UI (even if blank, user explicitly chose it)
+            await joplin.settings.setValue('openaiModelUserSet', true);
+            // Reload settings in the API instance
+            await chatGPTAPI.loadSettings();
+            return { success: true, message: modelToSet ? `Model updated to ${modelToSet}` : 'Model set to auto-select latest' };
           } else if (message.type === 'clearHistory') {
             chatGPTAPI.clearConversationHistory();
             return { success: true, message: 'Conversation history cleared' };
@@ -1236,13 +1902,112 @@ joplin.plugins.register({
         },
       });
 
+      // 8. Open System Prompt File
+      await joplin.commands.register({
+        name: 'openSystemPromptFile',
+        label: 'Open System Prompt File',
+        iconName: 'fas fa-file-alt',
+        execute: async () => {
+          try {
+            const fs = require('fs');
+            const path = require('path');
+            const { exec } = require('child_process');
+            const os = require('os');
+            
+            // Get plugin data directory
+            const dataDir = await joplin.plugins.dataDir('com.cogitations.chatgpt-toolkit');
+            const promptFile = path.join(dataDir, 'system-prompt.txt');
+            
+            // Ensure file exists (create with default if not)
+            if (!fs.existsSync(promptFile)) {
+              const defaultPrompt = 'You are a helpful AI assistant from the ChatGPT Toolkit integrated with Joplin notes. Help users improve their notes, answer questions, and provide writing assistance. Source: https://github.com/ishapiro/joplin-chatgpt-plugin';
+              if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+              }
+              fs.writeFileSync(promptFile, defaultPrompt, 'utf8');
+            }
+            
+            // Open file in default editor based on OS
+            const platform = os.platform();
+            let command: string;
+            
+            if (platform === 'darwin') {
+              // macOS
+              command = `open "${promptFile}"`;
+            } else if (platform === 'win32') {
+              // Windows
+              command = `start "" "${promptFile}"`;
+            } else {
+              // Linux and others
+              command = `xdg-open "${promptFile}"`;
+            }
+            
+            exec(command, (error: any) => {
+              if (error) {
+                console.error('Error opening system prompt file:', error);
+                joplin.views.dialogs.showMessageBox(
+                  `Could not open system prompt file.\n\n` +
+                  `File location: ${promptFile}\n\n` +
+                  `Please open this file manually in your text editor.`
+                );
+              } else {
+                joplin.views.dialogs.showMessageBox(
+                  `System prompt file opened in your default editor.\n\n` +
+                  `File location: ${promptFile}\n\n` +
+                  `After editing, reload the plugin to use the new prompt.`
+                );
+              }
+            });
+          } catch (error: any) {
+            console.error('Error opening system prompt file:', error);
+            joplin.views.dialogs.showMessageBox(
+              `Error opening system prompt file: ${error.message}`
+            );
+          }
+        }
+      });
+
       // ===== UI ACCESS SETUP =====
-      // Note: Toolbar buttons and menu items have compatibility issues with this Joplin version
-      // Users can access the ChatGPT panel via the Command Palette, which works reliably
+      // Try to add menu items to Tools menu
+      try {
+        // Main ChatGPT Toolkit menu item
+        await joplin.views.menuItems.register('chatgptToolkitMenuItem', MenuItemLocation.Tools, {
+          label: 'ChatGPT Toolkit',
+          iconName: 'fas fa-robot',
+          accelerator: 'CmdOrCtrl+Shift+C',
+          execute: async () => {
+            try {
+              await joplin.views.panels.show(actualPanelId);
+              console.info('ChatGPT Toolkit opened from Tools menu');
+            } catch (error: any) {
+              console.error('Error opening ChatGPT Toolkit from menu:', error);
+            }
+          }
+        });
+        
+        // Open System Prompt File menu item
+        await joplin.views.menuItems.register('openSystemPromptFileMenuItem', MenuItemLocation.Tools, {
+          label: 'ChatGPT Toolkit: Open System Prompt File',
+          iconName: 'fas fa-file-alt',
+          execute: async () => {
+            try {
+              await joplin.commands.execute('openSystemPromptFile');
+              console.info('Open System Prompt File executed from menu');
+            } catch (error: any) {
+              console.error('Error opening system prompt file from menu:', error);
+            }
+          }
+        });
+        
+        console.info('ChatGPT Toolkit menu items added to Tools menu');
+      } catch (error: any) {
+        console.warn('Could not add menu items (may not be supported in this Joplin version):', error.message);
+      }
+      
       console.info('ChatGPT Toolkit Access Methods:');
-      console.info('1. Command Palette: Ctrl+Shift+P (or Cmd+Shift+P) -> "Open ChatGPT Panel"');
-      console.info('2. Command Palette: Ctrl+Shift+P (or Cmd+Shift+P) -> "Toggle ChatGPT Toolbox"');
-      console.info('UI elements (toolbar buttons/menu items) disabled due to Joplin version compatibility');
+      console.info('1. Tools menu -> ChatGPT Toolkit (if available)');
+      console.info('2. Command Palette: Ctrl+Shift+P (or Cmd+Shift+P) -> "Open ChatGPT Panel"');
+      console.info('3. Command Palette: Ctrl+Shift+P (or Cmd+Shift+P) -> "Toggle ChatGPT Toolbox"');
       
       console.info('ChatGPT Toolkit Plugin initialized successfully!');
       console.info('Available commands:');

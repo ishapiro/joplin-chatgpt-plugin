@@ -5,12 +5,14 @@ A comprehensive ChatGPT integration plugin for the Joplin note-taking app that p
 ## Features
 
 - **Interactive Chat Panel**: Side panel with ChatGPT chat interface
+- **Model Selection**: Dropdown selector to choose from available OpenAI models (fetched from API)
 - **Note Integration**: Use note content as context for AI interactions
-- **Content Actions**: Append, replace, or create new notes with AI responses
+- **Content Actions**: Append, replace, insert at cursor, or create new notes with AI responses
 - **Grammar Checking**: Fix grammar and spelling of selected text
 - **Secure Storage**: Local encrypted storage of OpenAI API keys
-- **Multiple Models**: Support for GPT-3.5, GPT-4, and GPT-4o
+- **Multiple Models**: Support for GPT-5.1, GPT-5, GPT-4.1, GPT-4o, GPT-4, GPT-3.5, and reasoning models (o1, o3, o4-mini)
 - **Conversation History**: Maintain context between chat messages
+- **Menu Integration**: Access via Tools menu or Command Palette
 
 ## Installation
 
@@ -51,23 +53,33 @@ A comprehensive ChatGPT integration plugin for the Joplin note-taking app that p
    # Edit .env.local with your OpenAI API key
    ```
 
-3. **Build**:
+3. **Build and Deploy**:
    ```bash
-   # Development build
-   npm run dev
+   # Recommended: Build and deploy to Joplin
+   npm run deploy
    
-   # Production build with .jpl file
+   # Or create distributable .jpl file
    npm run dist
    ```
+   
+   **Important**: After deploying, reload the plugin in Joplin:
+   - Go to **Tools** → **Options** → **Plugins**
+   - Find "ChatGPT Toolkit"
+   - Click **Disable**, then **Enable** again
+
+   **Note for Windows Users**: The `deploy` script uses macOS/Linux paths. After `npm run build`, manually copy files from `dist/` to `%APPDATA%\Joplin\plugins\com.cogitations.chatgpt-toolkit\`. See [README-TECH.md](README-TECH.md) for detailed platform-specific instructions.
 
 ## Usage
 
 ### Opening the ChatGPT Panel
 
-**Primary Method - Command Palette**:
-1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
-2. Type "Open ChatGPT Panel" or "Toggle ChatGPT Toolbox"
-3. Press Enter
+**Multiple Access Methods**:
+1. **Tools Menu**: Go to **Tools** → **ChatGPT Toolkit** (if supported in your Joplin version)
+2. **Command Palette** (Recommended):
+   - Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
+   - Type "Open ChatGPT Panel" or "Toggle ChatGPT Toolbox"
+   - Press Enter
+3. **Keyboard Shortcut**: `Ctrl+Shift+C` / `Cmd+Shift+C` (if menu item is available)
 
 *Note: The Command Palette method works reliably across all Joplin versions.*
 
@@ -80,24 +92,33 @@ The panel appears on the right side of Joplin with these features:
 - Press `Enter` or click **Send** to get AI response
 - Use `Ctrl+Enter` (or `Cmd+Enter` on Mac) to send quickly
 
+**Model Selector**:
+- Dropdown at the top of the panel to select which OpenAI model to use
+- Automatically fetches available models from your OpenAI API account (first time only)
+- Defaults to GPT-5.1 (latest model)
+- Changes take effect immediately for new conversations
+
 **Action Buttons**:
-- **📝 Append Reply to Note**: Add ChatGPT response to current note
-- **🔄 Replace Note with Reply**: Replace entire note with ChatGPT response  
-- **📄 Create New Note**: Create new note with ChatGPT response
-- **📋 Copy Note to Prompt**: Copy current note content to chat input
-- **✂️ Copy Selected to Prompt**: Copy selected text to chat input
-- **✅ Check Grammar**: Fix grammar and spelling of selected text
-- **🗑️ Clear History**: Clear conversation history
+- **📝 Append**: Add ChatGPT response to the end of current note
+- **🔄 Replace**: Replace entire note with ChatGPT response  
+- **📍 Insert**: Insert ChatGPT response at cursor position in note
+- **📄 New Note**: Create new note with ChatGPT response
+- **📋 Note→Prompt**: Copy current note content to chat input
+- **✂️ Selected→Prompt**: Copy selected text to chat input
+- **✅ Grammar**: Fix grammar and spelling of selected text
+- **ℹ️ Help**: View comprehensive help and feature information
 
 ### Settings Configuration
 
 | Setting | Description | Recommended Value |
 |---------|-------------|-------------------|
 | **OpenAI API Key** | Your OpenAI API key for authentication | Required - get from OpenAI |
-| **OpenAI Model** | AI model to use for responses | `gpt-4o` (best balance) |
+| **OpenAI Model** | AI model to use for responses | `gpt-5.1` (default, latest) |
 | **Max Tokens** | Maximum response length | `1000` (good for most tasks) |
 | **System Prompt** | Instructions for AI behavior | Default works well |
 | **Enable Conversation History** | Keep chat context between messages | `true` (recommended) |
+
+**Note**: The model selector in the panel UI overrides the settings value. Models are automatically fetched from your OpenAI API account on first plugin load.
 
 ### Common Workflows
 
@@ -118,10 +139,9 @@ The panel appears on the right side of Joplin with these features:
 **Grammar Check**:
 1. Select text in your note
 2. Open ChatGPT panel
-3. Click **✂️ Copy Selected to Prompt**
-4. Type: "Please check grammar and spelling"
-5. Click **Send**
-6. Click **🔄 Replace Note with Reply** to apply corrections
+3. Click **✅ Grammar** button
+4. Review the corrected text in the modal
+5. Click **Apply** to replace the selected text with corrections
 
 **Create New Content**:
 1. Open ChatGPT panel
@@ -162,15 +182,30 @@ test/
 # Install dependencies
 npm install
 
-# Build the plugin (TypeScript compilation + webview copy)
-npm run build
+# Recommended: Build and deploy to Joplin (cleans, builds, deploys)
+npm run deploy
 
-# Development build (faster, no JPL creation)
-npm run dev
+# Alternative: Build only (doesn't deploy to Joplin)
+npm run build
 
 # Run tests
 npm test
 ```
+
+**Note**: Use `npm run deploy` for development. It cleans old files, builds fresh, and deploys to Joplin automatically. The `dev` command doesn't clean, which can cause issues with stale code.
+
+### Plugin File Locations
+
+Joplin looks for plugins in specific directories:
+
+**macOS/Linux:**
+- `~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/`
+
+**Windows:**
+- `%APPDATA%\Joplin\plugins\com.cogitations.chatgpt-toolkit\`
+- Full path: `C:\Users\YourUsername\AppData\Roaming\Joplin\plugins\com.cogitations.chatgpt-toolkit\`
+
+The `deploy` script automatically copies files to the macOS/Linux location. For Windows, see the [Technical Documentation](README-TECH.md) for manual deployment instructions or how to modify the scripts for cross-platform support.
 
 ### Testing
 The plugin includes comprehensive tests:

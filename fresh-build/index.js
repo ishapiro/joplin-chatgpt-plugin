@@ -492,7 +492,7 @@ joplin.plugins.register({
           <div class="chat-messages" id="chatMessages">
             <div class="message assistant">
               <div class="message-content">
-                <strong>🤖 ChatGPT Toolkit v1.0</strong><br>
+                <strong>🤖 ChatGPT Toolkit v1.5</strong><br>
                 <strong>✨ Features:</strong><br>
                 • 💬 Interactive chat with conversation history<br>
                 • 📝 Copy response to clipboard or Joplin note<br>
