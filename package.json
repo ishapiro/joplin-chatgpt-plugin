@@ -69,8 +69,8 @@
     "test:errors": "jest test/error-handling.test.js",
     "test:performance": "jest test/performance.test.js",
     "test:all": "./scripts/run-tests.sh",
-    "deploy": "npm run build && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
-    "deploy-prod": "npm run build-prod && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/",
+    "deploy": "node scripts/deploy.js",
+    "deploy-prod": "node scripts/deploy.js --prod",
     "dev": "npm run generate-manifest && npm run compile-ts && npm run copy-webview && mkdir -p ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit && cp -r dist/* ~/.config/joplin-desktop/plugins/com.cogitations.chatgpt-toolkit/"
   },
   "devDependencies": {
